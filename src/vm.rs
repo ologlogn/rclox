@@ -1,8 +1,22 @@
 use crate::chunk::{Chunk, OpCode};
-use crate::operation::{add, div, mul, sub};
 use crate::value::Value;
-use std::fmt::{Debug, Write};
+use std::fmt::Debug;
 
+macro_rules! binary_op {
+    ($vm:expr, $op:tt) => {
+        if let Some(Value::Number(b)) = $vm.stack.pop() {
+             if let Some(Value::Number(a)) = $vm.stack.pop() {
+                $vm.stack.push(Value::Number(a $op b));
+             } else {
+                    println!("Operand must be a number.");
+                    return InterpretResult::InterpretRuntimeError;
+                }
+        } else {
+                println!("Operand must be a number.");
+                return InterpretResult::InterpretRuntimeError;
+        }
+    };
+}
 pub enum InterpretResult {
     InterpretOk,
     InterpretCompileError,
@@ -10,7 +24,6 @@ pub enum InterpretResult {
 }
 
 pub struct Vm {
-    chunk: Option<Chunk>, // assign this before doing interpret.
     ip: usize,
     stack: Vec<Value>,
 }
@@ -29,37 +42,35 @@ impl Debug for Vm {
 impl Vm {
     pub fn new() -> Vm {
         Vm {
-            chunk: None,
             ip: 0, // instruction pointer
             stack: Vec::new(),
         }
     }
-    pub fn interpret(&mut self, chunk: Chunk) -> InterpretResult {
-        self.chunk = Some(chunk);
+    pub fn interpret(&mut self, chunk: &Chunk) -> InterpretResult {
         self.ip = 0;
         self.stack.clear();
-        self.run()
+        self.run(chunk)
     }
 
-    fn read_byte(&mut self) -> u8 {
-        let b = self.chunk.as_ref().unwrap().read_byte(self.ip); // read only
+    fn read_byte(&mut self, chunk: &Chunk) -> u8 {
+        let b = chunk.read_byte(self.ip); // read only
         self.ip += 1;
         b
     }
-    fn read_constant(&mut self) -> Value {
-        let b = self.read_byte();
-        self.chunk.as_ref().unwrap().read_constant(b as usize)
+    fn read_constant(&mut self, chunk: &Chunk) -> Value {
+        let b = self.read_byte(chunk);
+        chunk.read_constant(b as usize)
     }
 
-    fn run(&mut self) -> InterpretResult {
+    fn run(&mut self, chunk: &Chunk) -> InterpretResult {
         loop {
-            match OpCode::from(self.read_byte()) {
+            match OpCode::from(self.read_byte(chunk)) {
                 OpCode::OpReturn => {
                     println!("{:?}", self.stack.pop().unwrap());
                     return InterpretResult::InterpretOk;
                 }
                 OpCode::OpConstant => {
-                    let value = self.read_constant();
+                    let value = self.read_constant(chunk);
                     self.stack.push(value);
                 }
                 OpCode::OpNegate => {
@@ -69,16 +80,11 @@ impl Vm {
                         return InterpretResult::InterpretRuntimeError;
                     }
                 }
-                OpCode::OpAdd => self.binary_op(add),
-                OpCode::OpSubtract => self.binary_op(sub),
-                OpCode::OpMultiply => self.binary_op(mul),
-                OpCode::OpDivide => self.binary_op(div),
+                OpCode::OpAdd => binary_op!(self, +),
+                OpCode::OpSubtract => binary_op!(self, -),
+                OpCode::OpMultiply => binary_op!(self, *),
+                OpCode::OpDivide => binary_op!(self, /),
             }
         }
-    }
-    fn binary_op(&mut self, op: fn(Value, Value) -> Value) {
-        let b = self.stack.pop().unwrap();
-        let a = self.stack.pop().unwrap();
-        self.stack.push(op(a, b));
     }
 }
