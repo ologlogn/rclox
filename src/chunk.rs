@@ -1,26 +1,33 @@
 use crate::value::Value;
 
 pub struct Chunk {
-    code : Vec<u8>,
-    constants : Vec<Value>,
-    lines: Vec<usize>,
+    code: Vec<u8>,
+    constants: Vec<Value>,
+    lines: Vec<i32>,
 }
 impl Chunk {
     pub fn new() -> Self {
         Chunk {
-            code : vec![],
-            constants : vec![],
+            code: vec![],
+            constants: vec![],
             lines: vec![],
         }
     }
 
-    pub fn write_byte(&mut self, byte: u8, line: usize) {
+    pub fn write_byte(&mut self, byte: u8, line: i32) {
         self.code.push(byte);
         self.lines.push(line);
     }
     pub fn write_constant(&mut self, value: Value) -> usize {
         self.constants.push(value);
         self.constants.len() - 1
+    }
+
+    pub fn read_byte(&self, offset: usize) -> u8 {
+        self.code[offset]
+    }
+    pub fn read_constant(&self, offset: usize) -> Value {
+        self.constants[offset].clone()
     }
 }
 use std::fmt;
@@ -44,6 +51,11 @@ impl fmt::Debug for Chunk {
             offset = match OpCode::from(instruction) {
                 OpCode::OpReturn => self.debug_simple_instruction(f, "OP_RETURN", offset)?,
                 OpCode::OpConstant => self.debug_constant_instruction(f, "OP_CONSTANT", offset)?,
+                OpCode::OpNegate => self.debug_simple_instruction(f, "OP_NEGATE", offset)?,
+                OpCode::OpAdd => self.debug_simple_instruction(f, "OP_ADD", offset)?,
+                OpCode::OpSubtract => self.debug_simple_instruction(f, "OP_SUBTRACT", offset)?,
+                OpCode::OpMultiply => self.debug_simple_instruction(f, "OP_MULTIPLY", offset)?,
+                OpCode::OpDivide => self.debug_simple_instruction(f, "OP_DIVIDE", offset)?,
             };
         }
 
@@ -73,17 +85,28 @@ impl Chunk {
         Ok(offset + 2)
     }
 }
+
+#[repr(u8)]
+pub enum OpCode {
+    OpReturn,
+    OpConstant,
+    OpNegate,
+    OpAdd,
+    OpSubtract,
+    OpMultiply,
+    OpDivide,
+}
 impl From<u8> for OpCode {
     fn from(byte: u8) -> Self {
         match byte {
             0 => OpCode::OpReturn,
             1 => OpCode::OpConstant,
+            2 => OpCode::OpNegate,
+            3 => OpCode::OpAdd,
+            4 => OpCode::OpSubtract,
+            5 => OpCode::OpMultiply,
+            6 => OpCode::OpDivide,
             _ => panic!("Unknown opcode: {}", byte),
         }
     }
-}
-#[repr(u8)]
-pub enum OpCode {
-    OpReturn,
-    OpConstant,
 }
