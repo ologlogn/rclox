@@ -1,5 +1,4 @@
-#[derive(Clone, Copy)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Bool(bool),
     Number(f64),
