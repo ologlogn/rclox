@@ -1,19 +1,16 @@
 use crate::chunk::{Chunk, OpCode};
 use crate::value::Value;
 use std::fmt::Debug;
+use crate::compiler::compile;
 
 macro_rules! binary_op {
     ($vm:expr, $op:tt) => {
-        if let Some(Value::Number(b)) = $vm.stack.pop() {
-             if let Some(Value::Number(a)) = $vm.stack.pop() {
-                $vm.stack.push(Value::Number(a $op b));
-             } else {
-                    println!("Operand must be a number.");
-                    return InterpretResult::InterpretRuntimeError;
-                }
+        if let Some(Value::Number(b)) = $vm.stack.pop() &&
+            let Some(Value::Number(a)) = $vm.stack.pop() {
+            $vm.stack.push(Value::Number(a $op b));
         } else {
-                println!("Operand must be a number.");
-                return InterpretResult::InterpretRuntimeError;
+            println!("Operands must be numbers.");
+            return InterpretResult::InterpretRuntimeError;
         }
     };
 }
@@ -52,6 +49,10 @@ impl Vm {
         self.run(chunk)
     }
 
+    pub fn interpret_source(&mut self, source: &str) -> InterpretResult {
+        compile(source);
+        InterpretResult::InterpretOk
+    }
     fn read_byte(&mut self, chunk: &Chunk) -> u8 {
         let b = chunk.read_byte(self.ip); // read only
         self.ip += 1;

@@ -1,27 +1,54 @@
-use crate::chunk::{Chunk, OpCode};
-use crate::value::Value;
-use crate::vm::Vm;
-
+mod vm;
 mod chunk;
 mod value;
-mod vm;
+mod compiler;
+mod scanner;
+mod token;
+
+use std::io::Write;
+use std::process::exit;
+use std::{env, fs, io};
+use crate::vm::{InterpretResult, Vm};
 
 fn main() {
-    let mut chunk = Chunk::new();
-    let constant = chunk.write_constant(Value::Number(3.14));
-    chunk.write_byte(OpCode::OpConstant as u8, 1);
-    chunk.write_byte(constant as u8, 1);
-
-    chunk.write_byte(OpCode::OpNegate as u8, 1);
-
-    let constant = chunk.write_constant(Value::Number(1234f64));
-    chunk.write_byte(OpCode::OpConstant as u8, 1);
-    chunk.write_byte(constant as u8, 1);
-
-    chunk.write_byte(OpCode::OpMultiply as u8, 1);
-    chunk.write_byte(OpCode::OpReturn as u8, 1);
-
     let mut vm = Vm::new();
-    println!("{:?}", chunk);
-    vm.interpret(&chunk);
+    let args: Vec<String> = env::args().collect();
+    if args.len() > 2 {
+        println!("Usage: rilox [script]");
+        exit(-1);
+    } else if args.len() == 2 {
+        run_file(args[1].clone(), &mut vm);
+    } else {
+        run_prompt(&mut vm);
+    }
+}
+pub fn interpret(source: String, vm: &mut Vm) -> InterpretResult{
+    InterpretResult::InterpretOk
+}
+
+fn run_prompt(vm: &mut Vm) {
+    let stdin = io::stdin();
+    loop {
+        print!("> ");
+        io::stdout().flush().unwrap();
+        let mut line = String::new();
+        let bytes_read = stdin.read_line(&mut line).unwrap();
+        if bytes_read == 0 {
+            break;
+        }
+        if line.is_empty() {
+            continue;
+        }
+        interpret(line,vm);
+    }
+}
+
+fn run_file(file_name: String, vm: &mut Vm) {
+    let content: String = fs::read_to_string(&file_name).unwrap();
+    let result = interpret(content, vm);
+    match result {
+        InterpretResult::InterpretOk => {exit(0)}
+        InterpretResult::InterpretCompileError => {exit(65)}
+        InterpretResult::InterpretRuntimeError => {exit(70)}
+    }
 }

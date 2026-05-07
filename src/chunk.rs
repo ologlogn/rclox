@@ -58,7 +58,6 @@ impl fmt::Debug for Chunk {
                 OpCode::OpDivide => self.debug_simple_instruction(f, "OP_DIVIDE", offset)?,
             };
         }
-
         Ok(())
     }
 }
