@@ -1,7 +1,7 @@
 use crate::chunk::{Chunk, OpCode};
+use crate::compiler::compile;
 use crate::value::Value;
 use std::fmt::Debug;
-use crate::compiler::compile;
 
 macro_rules! binary_op {
     ($vm:expr, $op:tt) => {

@@ -1,14 +1,14 @@
-mod vm;
 mod chunk;
-mod value;
 mod compiler;
 mod scanner;
 mod token;
+mod value;
+mod vm;
 
+use crate::vm::{InterpretResult, Vm};
 use std::io::Write;
 use std::process::exit;
 use std::{env, fs, io};
-use crate::vm::{InterpretResult, Vm};
 
 fn main() {
     let mut vm = Vm::new();
@@ -22,7 +22,8 @@ fn main() {
         run_prompt(&mut vm);
     }
 }
-pub fn interpret(source: String, vm: &mut Vm) -> InterpretResult{
+pub fn interpret(source: String, vm: &mut Vm) -> InterpretResult {
+    vm.interpret_source(&source);
     InterpretResult::InterpretOk
 }
 
@@ -39,7 +40,7 @@ fn run_prompt(vm: &mut Vm) {
         if line.is_empty() {
             continue;
         }
-        interpret(line,vm);
+        interpret(line, vm);
     }
 }
 
@@ -47,8 +48,8 @@ fn run_file(file_name: String, vm: &mut Vm) {
     let content: String = fs::read_to_string(&file_name).unwrap();
     let result = interpret(content, vm);
     match result {
-        InterpretResult::InterpretOk => {exit(0)}
-        InterpretResult::InterpretCompileError => {exit(65)}
-        InterpretResult::InterpretRuntimeError => {exit(70)}
+        InterpretResult::InterpretOk => exit(0),
+        InterpretResult::InterpretCompileError => exit(65),
+        InterpretResult::InterpretRuntimeError => exit(70),
     }
 }
