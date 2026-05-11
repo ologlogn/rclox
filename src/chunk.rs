@@ -3,7 +3,7 @@ use crate::value::Value;
 pub struct Chunk {
     code: Vec<u8>,
     constants: Vec<Value>,
-    lines: Vec<i32>,
+    lines: Vec<usize>,
 }
 impl Chunk {
     pub fn new() -> Self {
@@ -14,7 +14,7 @@ impl Chunk {
         }
     }
 
-    pub fn write_byte(&mut self, byte: u8, line: i32) {
+    pub fn write_byte(&mut self, byte: u8, line: usize) {
         self.code.push(byte);
         self.lines.push(line);
     }
@@ -27,7 +27,7 @@ impl Chunk {
         self.code[offset]
     }
     pub fn read_constant(&self, offset: usize) -> Value {
-        self.constants[offset].clone()
+        self.constants[offset]
     }
 }
 use std::fmt;
@@ -48,7 +48,7 @@ impl fmt::Debug for Chunk {
 
             let instruction = self.code[offset];
 
-            offset = match OpCode::from(instruction) {
+            offset = match OpCode::try_from(instruction).unwrap() {
                 OpCode::OpReturn => self.debug_simple_instruction(f, "OP_RETURN", offset)?,
                 OpCode::OpConstant => self.debug_constant_instruction(f, "OP_CONSTANT", offset)?,
                 OpCode::OpNegate => self.debug_simple_instruction(f, "OP_NEGATE", offset)?,
@@ -95,17 +95,19 @@ pub enum OpCode {
     OpMultiply,
     OpDivide,
 }
-impl From<u8> for OpCode {
-    fn from(byte: u8) -> Self {
+impl TryFrom<u8> for OpCode {
+    type Error = String;
+
+    fn try_from(byte: u8) -> Result<Self, Self::Error> {
         match byte {
-            0 => OpCode::OpReturn,
-            1 => OpCode::OpConstant,
-            2 => OpCode::OpNegate,
-            3 => OpCode::OpAdd,
-            4 => OpCode::OpSubtract,
-            5 => OpCode::OpMultiply,
-            6 => OpCode::OpDivide,
-            _ => panic!("Unknown opcode: {}", byte),
+            0 => Ok(OpCode::OpReturn),
+            1 => Ok(OpCode::OpConstant),
+            2 => Ok(OpCode::OpNegate),
+            3 => Ok(OpCode::OpAdd),
+            4 => Ok(OpCode::OpSubtract),
+            5 => Ok(OpCode::OpMultiply),
+            6 => Ok(OpCode::OpDivide),
+            _ => Err(format!("Unknown opcode: {}", byte)),
         }
     }
 }

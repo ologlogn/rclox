@@ -4,6 +4,7 @@ mod scanner;
 mod token;
 mod value;
 mod vm;
+mod rules;
 
 use crate::vm::{InterpretResult, Vm};
 use std::io::Write;
@@ -23,7 +24,7 @@ fn main() {
     }
 }
 pub fn interpret(source: String, vm: &mut Vm) -> InterpretResult {
-    vm.interpret_source(&source);
+    vm.interpret_source(source);
     InterpretResult::InterpretOk
 }
 

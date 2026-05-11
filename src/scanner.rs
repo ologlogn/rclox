@@ -1,13 +1,13 @@
 use crate::token::{Token, TokenType};
 
-pub struct Scanner<'a> {
-    source: &'a str,
+pub struct Scanner {
+    source: String,
     start: usize,
     current: usize,
     line: usize,
 }
-impl<'a> Scanner<'a> {
-    pub fn new(source: &'_ str) -> Scanner<'_> {
+impl Scanner {
+    pub fn new(source: String) -> Scanner {
         Scanner {
             source,
             start: 0,
@@ -26,7 +26,11 @@ fn is_alphanumeric(c: char) -> bool {
     is_alpha(c) || is_digit(c)
 }
 
-impl<'a> Scanner<'a> {
+impl Scanner {
+    pub fn get_lexeme(&self, token: Token) -> &str {
+        // for string remove the quotes:
+        &self.source[token.start..token.start + token.length]
+    }
     fn char_at_nth(&self, start: usize, offset: usize) -> char {
         self.source
             .get(start..)

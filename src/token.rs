@@ -1,6 +1,8 @@
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, Default, PartialOrd, PartialEq)]
 pub enum TokenType {
     // Single Character tokens
+    #[default]
+    None,
     LeftParen,
     RightParen,
     LeftBrace,
@@ -49,7 +51,7 @@ pub enum TokenType {
     EOF,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct Token {
     pub token_type: TokenType,
     pub start: usize,

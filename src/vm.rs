@@ -1,5 +1,6 @@
 use crate::chunk::{Chunk, OpCode};
-use crate::compiler::compile;
+use crate::compiler::Parser;
+use crate::scanner::Scanner;
 use crate::value::Value;
 use std::fmt::Debug;
 
@@ -49,9 +50,16 @@ impl Vm {
         self.run(chunk)
     }
 
-    pub fn interpret_source(&mut self, source: &str) -> InterpretResult {
-        compile(source);
-        InterpretResult::InterpretOk
+    pub fn interpret_source(&mut self, source: String) -> InterpretResult {
+        let mut chunk = Chunk::new();
+        let mut scanner = Scanner::new(source);
+        let mut parser = Parser::new();
+        if !parser.compile(&mut scanner, &mut chunk) {
+            InterpretResult::InterpretCompileError
+        } else {
+            println!("{:?}", chunk);
+            self.interpret(&chunk)
+        }
     }
     fn read_byte(&mut self, chunk: &Chunk) -> u8 {
         let b = chunk.read_byte(self.ip); // read only
@@ -65,7 +73,7 @@ impl Vm {
 
     fn run(&mut self, chunk: &Chunk) -> InterpretResult {
         loop {
-            match OpCode::from(self.read_byte(chunk)) {
+            match OpCode::try_from(self.read_byte(chunk)).unwrap() {
                 OpCode::OpReturn => {
                     println!("{:?}", self.stack.pop().unwrap());
                     return InterpretResult::InterpretOk;
