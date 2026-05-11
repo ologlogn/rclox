@@ -1,5 +1,5 @@
 use crate::chunk::Chunk;
-use crate::compiler::Parser;
+use crate::compiler::Compiler;
 use crate::scanner::Scanner;
 use crate::token::TokenType;
 
@@ -38,7 +38,7 @@ impl TryFrom<u8> for Precedence {
     }
 }
 
-pub type ParseFn = fn(&mut Parser, &mut Scanner, &mut Chunk);
+pub type ParseFn = fn(&mut Compiler, &mut Scanner, &mut Chunk);
 
 pub struct ParseRule {
     pub prefix: Option<ParseFn>,
@@ -47,29 +47,30 @@ pub struct ParseRule {
 }
 
 pub fn get_rule(token_type: TokenType) -> ParseRule {
+    println!("GET RULE {:?}", token_type);
     match token_type {
         TokenType::LeftParen => ParseRule {
-            prefix: Some(Parser::grouping),
+            prefix: Some(Compiler::grouping),
             infix: None,
             precedence: Precedence::None,
         },
         TokenType::Minus => ParseRule {
-            prefix: Some(Parser::unary),
-            infix: Some(Parser::binary),
+            prefix: Some(Compiler::unary),
+            infix: Some(Compiler::binary),
             precedence: Precedence::Term,
         },
         TokenType::Plus => ParseRule {
             prefix: None,
-            infix: Some(Parser::binary),
+            infix: Some(Compiler::binary),
             precedence: Precedence::Term,
         },
         TokenType::Star | TokenType::Slash => ParseRule {
             prefix: None,
-            infix: Some(Parser::binary),
+            infix: Some(Compiler::binary),
             precedence: Precedence::Factor,
         },
         TokenType::Number => ParseRule {
-            prefix: Some(Parser::number),
+            prefix: Some(Compiler::number),
             infix: None,
             precedence: Precedence::None,
         },

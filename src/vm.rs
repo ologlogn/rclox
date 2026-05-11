@@ -1,6 +1,4 @@
 use crate::chunk::{Chunk, OpCode};
-use crate::compiler::Parser;
-use crate::scanner::Scanner;
 use crate::value::Value;
 use std::fmt::Debug;
 
@@ -25,17 +23,6 @@ pub struct Vm {
     ip: usize,
     stack: Vec<Value>,
 }
-impl Debug for Vm {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "        ")?;
-        for v in self.stack.iter() {
-            write!(f, "[ ")?;
-            write!(f, "{:?}", v)?;
-            write!(f, " ]")?;
-        }
-        write!(f, "\n")
-    }
-}
 
 impl Vm {
     pub fn new() -> Vm {
@@ -50,17 +37,6 @@ impl Vm {
         self.run(chunk)
     }
 
-    pub fn interpret_source(&mut self, source: String) -> InterpretResult {
-        let mut chunk = Chunk::new();
-        let mut scanner = Scanner::new(source);
-        let mut parser = Parser::new();
-        if !parser.compile(&mut scanner, &mut chunk) {
-            InterpretResult::InterpretCompileError
-        } else {
-            println!("{:?}", chunk);
-            self.interpret(&chunk)
-        }
-    }
     fn read_byte(&mut self, chunk: &Chunk) -> u8 {
         let b = chunk.read_byte(self.ip); // read only
         self.ip += 1;
@@ -95,5 +71,16 @@ impl Vm {
                 OpCode::OpDivide => binary_op!(self, /),
             }
         }
+    }
+}
+impl Debug for Vm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "        ")?;
+        for v in self.stack.iter() {
+            write!(f, "[ ")?;
+            write!(f, "{:?}", v)?;
+            write!(f, " ]")?;
+        }
+        write!(f, "\n")
     }
 }

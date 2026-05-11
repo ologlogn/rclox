@@ -1,11 +1,14 @@
 mod chunk;
 mod compiler;
+mod rules;
 mod scanner;
 mod token;
 mod value;
 mod vm;
-mod rules;
 
+use crate::chunk::Chunk;
+use crate::compiler::Compiler;
+use crate::scanner::Scanner;
 use crate::vm::{InterpretResult, Vm};
 use std::io::Write;
 use std::process::exit;
@@ -24,8 +27,15 @@ fn main() {
     }
 }
 pub fn interpret(source: String, vm: &mut Vm) -> InterpretResult {
-    vm.interpret_source(source);
-    InterpretResult::InterpretOk
+    let mut chunk = Chunk::new();
+    let mut scanner = Scanner::new(source);
+    let mut parser = Compiler::new();
+    if !parser.compile(&mut scanner, &mut chunk) {
+        InterpretResult::InterpretCompileError
+    } else {
+        println!("{:?}", chunk);
+        vm.interpret(&chunk)
+    }
 }
 
 fn run_prompt(vm: &mut Vm) {

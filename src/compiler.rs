@@ -1,18 +1,18 @@
 use crate::chunk::{Chunk, OpCode};
-use crate::rules::{get_rule, Precedence};
+use crate::rules::{Precedence, get_rule};
 use crate::scanner::Scanner;
 use crate::token::{Token, TokenType};
 use crate::value::Value;
 
-pub struct Parser {
+pub struct Compiler {
     current_token: Token,
     previous_token: Token,
     had_error: bool,
     panic_mode: bool,
 }
-impl Parser {
+impl Compiler {
     pub(crate) fn new() -> Self {
-        Parser {
+        Compiler {
             current_token: Token::default(),
             previous_token: Token::default(),
             had_error: false,
