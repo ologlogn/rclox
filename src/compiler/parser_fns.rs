@@ -1,0 +1,46 @@
+use super::Compiler;
+use crate::chunk::{Chunk, OpCode};
+use crate::compiler::rules::{Precedence, get_rule};
+use crate::scanner::Scanner;
+use crate::token::TokenType;
+use crate::value::Value;
+
+impl Compiler {
+    pub(super) fn number(&mut self, scanner: &mut Scanner, chunk: &mut Chunk) {
+        let lexeme = scanner.get_lexeme(self.previous_token);
+        let val = Value::Number(lexeme.parse().unwrap());
+        self.emit_constant(val, chunk);
+    }
+
+    pub(super) fn grouping(&mut self, scanner: &mut Scanner, chunk: &mut Chunk) {
+        self.expression(scanner, chunk);
+        self.consume(
+            TokenType::RightParen,
+            "Expect ')' after expression",
+            scanner,
+        );
+    }
+    pub(super) fn unary(&mut self, scanner: &mut Scanner, chunk: &mut Chunk) {
+        let operator_type = self.previous_token.token_type;
+        self.parse_precedence(Precedence::Unary, scanner, chunk);
+        if operator_type == TokenType::Minus {
+            self.emit_byte(OpCode::OpNegate as u8, chunk)
+        }
+    }
+    pub(super) fn binary(&mut self, scanner: &mut Scanner, chunk: &mut Chunk) {
+        let operator_type = self.previous_token.token_type;
+        let rule = get_rule(operator_type);
+        self.parse_precedence(
+            Precedence::try_from(rule.precedence as u8 + 1).unwrap(),
+            scanner,
+            chunk,
+        );
+        match operator_type {
+            TokenType::Plus => self.emit_byte(OpCode::OpAdd as u8, chunk),
+            TokenType::Minus => self.emit_byte(OpCode::OpSubtract as u8, chunk),
+            TokenType::Star => self.emit_byte(OpCode::OpMultiply as u8, chunk),
+            TokenType::Slash => self.emit_byte(OpCode::OpDivide as u8, chunk),
+            _ => unreachable!("Unknown binary operator"),
+        }
+    }
+}

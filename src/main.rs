@@ -1,18 +1,17 @@
 mod chunk;
 mod compiler;
-mod rules;
 mod scanner;
 mod token;
 mod value;
 mod vm;
 
 use crate::chunk::Chunk;
-use crate::compiler::Compiler;
 use crate::scanner::Scanner;
 use crate::vm::{InterpretResult, Vm};
 use std::io::Write;
 use std::process::exit;
 use std::{env, fs, io};
+use crate::compiler::Compiler;
 
 fn main() {
     let mut vm = Vm::new();

@@ -1,5 +1,5 @@
+use super::Compiler;
 use crate::chunk::Chunk;
-use crate::compiler::Compiler;
 use crate::scanner::Scanner;
 use crate::token::TokenType;
 
@@ -47,7 +47,6 @@ pub struct ParseRule {
 }
 
 pub fn get_rule(token_type: TokenType) -> ParseRule {
-    println!("GET RULE {:?}", token_type);
     match token_type {
         TokenType::LeftParen => ParseRule {
             prefix: Some(Compiler::grouping),
