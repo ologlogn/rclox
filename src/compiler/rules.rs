@@ -73,6 +73,11 @@ pub fn get_rule(token_type: TokenType) -> ParseRule {
             infix: None,
             precedence: Precedence::None,
         },
+        TokenType::Nil | TokenType::False | TokenType::True => ParseRule {
+            prefix: Some(Compiler::literal),
+            infix: None,
+            precedence: Precedence::None,
+        },
         _ => ParseRule {
             prefix: None,
             infix: None,

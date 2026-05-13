@@ -27,7 +27,10 @@ impl Chunk {
         self.code[offset]
     }
     pub fn read_constant(&self, offset: usize) -> Value {
-        self.constants[offset]
+        self.constants[offset].clone()
+    }
+    pub fn get_line(&self, offset: usize) -> usize {
+        self.lines[offset]
     }
 }
 use std::fmt;
@@ -56,6 +59,9 @@ impl fmt::Debug for Chunk {
                 OpCode::OpSubtract => self.debug_simple_instruction(f, "OP_SUBTRACT", offset)?,
                 OpCode::OpMultiply => self.debug_simple_instruction(f, "OP_MULTIPLY", offset)?,
                 OpCode::OpDivide => self.debug_simple_instruction(f, "OP_DIVIDE", offset)?,
+                OpCode::OPNil => self.debug_simple_instruction(f, "OP_NIL", offset)?,
+                OpCode::OpTrue => self.debug_simple_instruction(f, "OP_TRUE", offset)?,
+                OpCode::OpFalse => self.debug_simple_instruction(f, "OP_FALSE", offset)?,
             };
         }
         Ok(())
@@ -94,6 +100,9 @@ pub enum OpCode {
     OpSubtract,
     OpMultiply,
     OpDivide,
+    OPNil,
+    OpTrue,
+    OpFalse,
 }
 impl TryFrom<u8> for OpCode {
     type Error = String;
@@ -107,6 +116,9 @@ impl TryFrom<u8> for OpCode {
             4 => Ok(OpCode::OpSubtract),
             5 => Ok(OpCode::OpMultiply),
             6 => Ok(OpCode::OpDivide),
+            7 => Ok(OpCode::OPNil),
+            8 => Ok(OpCode::OpTrue),
+            9 => Ok(OpCode::OpFalse),
             _ => Err(format!("Unknown opcode: {}", byte)),
         }
     }

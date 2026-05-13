@@ -2,17 +2,6 @@ use crate::chunk::{Chunk, OpCode};
 use crate::value::Value;
 use std::fmt::Debug;
 
-macro_rules! binary_op {
-    ($vm:expr, $op:tt) => {
-        if let Some(Value::Number(b)) = $vm.stack.pop() &&
-            let Some(Value::Number(a)) = $vm.stack.pop() {
-            $vm.stack.push(Value::Number(a $op b));
-        } else {
-            println!("Operands must be numbers.");
-            return InterpretResult::InterpretRuntimeError;
-        }
-    };
-}
 pub enum InterpretResult {
     InterpretOk,
     InterpretCompileError,
@@ -25,6 +14,21 @@ pub struct Vm {
 }
 
 impl Vm {
+    fn binary_op<F>(&mut self, op: F) -> Result<(), &'static str>
+    where
+        F: FnOnce(&Value, &Value) -> Result<Value, &'static str>,
+    {
+        let len = self.stack.len();
+        if len < 2 {
+            return Err("Stack underflow");
+        }
+        let a = &self.stack[len - 2];
+        let b = &self.stack[len - 1];
+        let result = op(a, b)?;
+        self.stack.truncate(len - 2);
+        self.stack.push(result);
+        Ok(())
+    }
     pub fn new() -> Vm {
         Vm {
             ip: 0, // instruction pointer
@@ -58,19 +62,47 @@ impl Vm {
                     let value = self.read_constant(chunk);
                     self.stack.push(value);
                 }
-                OpCode::OpNegate => {
-                    if let Some(Value::Number(number)) = self.stack.pop() {
-                        self.stack.push(Value::Number(-number));
-                    } else {
+                OpCode::OpNegate => match self.stack.last_mut() {
+                    Some(Value::Number(n)) => {
+                        *n = -*n;
+                    }
+                    _ => {
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                },
+                OpCode::OpAdd => {
+                    if let Err(e) = self.binary_op(|a, b| a + b) {
+                        self.runtime_error(e, chunk);
                         return InterpretResult::InterpretRuntimeError;
                     }
                 }
-                OpCode::OpAdd => binary_op!(self, +),
-                OpCode::OpSubtract => binary_op!(self, -),
-                OpCode::OpMultiply => binary_op!(self, *),
-                OpCode::OpDivide => binary_op!(self, /),
+                OpCode::OpSubtract => {
+                    if let Err(e) = self.binary_op(|a, b| a - b) {
+                        self.runtime_error(e, chunk);
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                }
+                OpCode::OpMultiply => {
+                    if let Err(e) = self.binary_op(|a, b| a * b) {
+                        self.runtime_error(e, chunk);
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                }
+                OpCode::OpDivide => {
+                    if let Err(e) = self.binary_op(|a, b| a / b) {
+                        self.runtime_error(e, chunk);
+                        return InterpretResult::InterpretRuntimeError;
+                    }
+                }
+                OpCode::OPNil => self.stack.push(Value::Nil),
+                OpCode::OpTrue => self.stack.push(Value::Bool(true)),
+                OpCode::OpFalse => self.stack.push(Value::Bool(false)),
             }
         }
+    }
+    fn runtime_error(&mut self, string: &str, chunk: &Chunk) {
+        eprintln!("Runtime Error: {}: on line {}", string, chunk.get_line(self.ip - 1));
+        self.stack.clear();
     }
 }
 impl Debug for Vm {

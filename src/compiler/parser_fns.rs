@@ -43,4 +43,13 @@ impl Compiler {
             _ => unreachable!("Unknown binary operator"),
         }
     }
+    pub(super) fn literal(&mut self, _scanner: &mut Scanner, chunk: &mut Chunk) {
+        let operator_type = self.previous_token.token_type;
+        match operator_type {
+            TokenType::Nil => self.emit_byte(OpCode::OPNil as u8, chunk),
+            TokenType::True => self.emit_byte(OpCode::OpTrue as u8, chunk),
+            TokenType::False => self.emit_byte(OpCode::OpFalse as u8, chunk),
+            _ => unreachable!("Unknown literal operator"),
+        }
+    }
 }
