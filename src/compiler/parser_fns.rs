@@ -3,7 +3,7 @@ use crate::chunk::{Chunk, OpCode};
 use crate::compiler::rules::{get_rule, Precedence};
 use crate::scanner::Scanner;
 use crate::token::TokenType;
-use crate::value::{ObjectType, Value};
+use crate::value::{Value};
 use crate::vm::Vm;
 
 impl Compiler {
@@ -71,7 +71,7 @@ impl Compiler {
     pub(super) fn string(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
         let lexeme = scanner.get_lexeme(self.previous_token);
         let string_value = lexeme[1..lexeme.len() - 1].to_string();
-        let obj_ptr = vm.allocate(ObjectType::String(string_value));
+        let obj_ptr = vm.allocate_string(string_value.as_str());
         self.emit_constant(Value::Object(obj_ptr), chunk);
     }
 }

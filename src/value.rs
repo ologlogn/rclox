@@ -36,13 +36,7 @@ impl PartialEq for Value {
             (Value::Number(a), Value::Number(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Nil, Value::Nil) => true,
-            (Value::Object(a), Value::Object(b)) => unsafe {
-                let obj_a = &**a;
-                let obj_b = &**b;
-                match (&obj_a.obj_type, &obj_b.obj_type) {
-                    (ObjectType::String(str_a), ObjectType::String(str_b)) => str_a == str_b,
-                }
-            },
+            (Value::Object(a), Value::Object(b)) => a == b,
             _ => false,
         }
     }

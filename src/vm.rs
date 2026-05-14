@@ -1,6 +1,7 @@
 use crate::chunk::{Chunk, OpCode};
 use crate::heap::Heap;
 use crate::value::{Object, ObjectType, Value};
+use std::collections::HashMap;
 use std::fmt::Debug;
 
 pub enum InterpretResult {
@@ -13,6 +14,7 @@ pub struct Vm {
     ip: usize,
     stack: Vec<Value>,
     heap: Heap,
+    strings: HashMap<String, *mut Object>,
 }
 
 impl Vm {
@@ -47,6 +49,7 @@ impl Vm {
             ip: 0, // instruction pointer
             stack: Vec::new(),
             heap: Heap::new(),
+            strings: HashMap::new(),
         }
     }
     pub fn interpret(&mut self, chunk: &Chunk) -> Result<(), InterpretResult> {
@@ -107,7 +110,7 @@ impl Vm {
                                         String::with_capacity(str_a.len() + str_b.len());
                                     new_string.push_str(str_a);
                                     new_string.push_str(str_b);
-                                    let new_ptr = self.allocate(ObjectType::String(new_string));
+                                    let new_ptr = self.allocate_string(new_string.as_str());
                                     val = Value::Object(new_ptr);
                                 }
                             }
@@ -149,8 +152,16 @@ impl Vm {
         self.ip = 0;
         self.stack.clear();
     }
-    pub fn allocate(&mut self, obj_type: ObjectType) -> *mut Object {
+    pub fn allocate_object(&mut self, obj_type: ObjectType) -> *mut Object {
         self.heap.allocate(obj_type)
+    }
+    pub fn allocate_string(&mut self, string: &str) -> *mut Object {
+        if self.strings.contains_key(string) {
+            return self.strings[string];
+        }
+        let str_ptr = self.allocate_object(ObjectType::String(string.to_string()));
+        self.strings.insert(string.to_string(), str_ptr);
+        str_ptr
     }
 }
 impl Debug for Vm {
