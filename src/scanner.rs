@@ -28,7 +28,6 @@ fn is_alphanumeric(c: char) -> bool {
 
 impl Scanner {
     pub fn get_lexeme(&self, token: Token) -> &str {
-        // for string remove the quotes:
         &self.source[token.start..token.start + token.length]
     }
     fn char_at_nth(&self, start: usize, offset: usize) -> char {

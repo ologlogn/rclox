@@ -2,10 +2,11 @@ use crate::chunk::{Chunk, OpCode};
 use crate::scanner::Scanner;
 use crate::token::{Token, TokenType};
 use crate::value::Value;
+use crate::vm::Vm;
 
+mod parser;
 mod parser_fns;
 mod rules;
-mod parser;
 
 pub struct Compiler {
     current_token: Token,
@@ -40,9 +41,9 @@ impl Compiler {
     fn end(&self, chunk: &mut Chunk) {
         self.emit_return(chunk);
     }
-    pub fn compile(&mut self, scanner: &mut Scanner, chunk: &mut Chunk) -> bool {
+    pub fn compile(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) -> bool {
         self.advance(scanner);
-        self.expression(scanner, chunk);
+        self.expression(scanner, chunk, vm);
         self.consume(TokenType::EOF, "Expect end of expression", scanner);
         self.end(chunk);
         !self.had_error

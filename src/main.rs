@@ -1,5 +1,6 @@
 mod chunk;
 mod compiler;
+mod heap;
 mod scanner;
 mod token;
 mod value;
@@ -29,7 +30,7 @@ pub fn interpret(source: String, vm: &mut Vm) -> InterpretResult {
     let mut chunk = Chunk::new();
     let mut scanner = Scanner::new(source);
     let mut parser = Compiler::new();
-    if !parser.compile(&mut scanner, &mut chunk) {
+    if !parser.compile(&mut scanner, &mut chunk, vm) {
         InterpretResult::InterpretCompileError
     } else {
         println!("{:?}", chunk);

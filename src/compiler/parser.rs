@@ -1,8 +1,9 @@
 use super::Compiler;
 use crate::chunk::Chunk;
-use crate::compiler::rules::{Precedence, get_rule};
+use crate::compiler::rules::{get_rule, Precedence};
 use crate::scanner::Scanner;
 use crate::token::{Token, TokenType};
+use crate::vm::Vm;
 
 impl Compiler {
     pub(super) fn error_at(&mut self, token: Token, message: &str, scanner: &Scanner) {
@@ -45,13 +46,14 @@ impl Compiler {
         precedence: Precedence,
         scanner: &mut Scanner,
         chunk: &mut Chunk,
+        vm: &mut Vm,
     ) {
         self.advance(scanner);
         // prefix
         let prefix_rule = get_rule(self.previous_token.token_type).prefix;
         match prefix_rule {
             Some(prefix_fn) => {
-                prefix_fn(self, scanner, chunk);
+                prefix_fn(self, scanner, chunk, vm);
             }
             None => {
                 self.error_at(self.previous_token, "Expect expression.", scanner);
@@ -63,11 +65,11 @@ impl Compiler {
             self.advance(scanner);
             let infix_rule = get_rule(self.previous_token.token_type).infix;
             if let Some(infix_fn) = infix_rule {
-                infix_fn(self, scanner, chunk);
+                infix_fn(self, scanner, chunk, vm);
             }
         }
     }
-    pub(super) fn expression(&mut self, scanner: &mut Scanner, chunk: &mut Chunk) {
-        self.parse_precedence(Precedence::Assignment, scanner, chunk)
+    pub(super) fn expression(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
+        self.parse_precedence(Precedence::Assignment, scanner, chunk, vm)
     }
 }

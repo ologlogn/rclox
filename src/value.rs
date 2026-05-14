@@ -1,10 +1,59 @@
-use std::ops::{Add, Div, Mul, Sub};
+use std::fmt::{Display, Formatter};
+use std::ops::{Div, Mul, Sub};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Bool(bool),
     Number(f64),
     Nil,
+    Object(*mut Object),
+}
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            Value::Bool(b) => write!(f, "{}", b),
+            Value::Number(n) => write!(f, "{}", n),
+            Value::Nil => write!(f, "nil"),
+            Value::Object(ptr) => {
+                unsafe {
+                    if ptr.is_null() {
+                        return write!(f, "nil");
+                    }
+                    let obj = &**ptr;
+                    match &obj.obj_type {
+                        ObjectType::String(s) => write!(f, "{}", s),
+                        // Later
+                        // ObjectType::Function(fun) => write!(f, "<fn {}>", fun.name),
+                    }
+                }
+            }
+        }
+    }
+}
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Number(a), Value::Number(b)) => a == b,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Nil, Value::Nil) => true,
+            (Value::Object(a), Value::Object(b)) => unsafe {
+                let obj_a = &**a;
+                let obj_b = &**b;
+                match (&obj_a.obj_type, &obj_b.obj_type) {
+                    (ObjectType::String(str_a), ObjectType::String(str_b)) => str_a == str_b,
+                }
+            },
+            _ => false,
+        }
+    }
+}
+pub struct Object {
+    pub obj_type: ObjectType,
+    pub is_marked: bool,
+    pub next: *mut Object,
+}
+pub enum ObjectType {
+    String(String),
 }
 
 impl Value {
@@ -27,17 +76,6 @@ impl Value {
         }
     }
 }
-impl Add for &Value {
-    type Output = Result<Value, &'static str>;
-    fn add(self, rhs: Self) -> Self::Output {
-        match (self, rhs) {
-            (Value::Number(a), Value::Number(b)) => Ok(Value::Number(a + b)),
-            // later for string and other values
-            _ => Err("Operands must be numbers or strings."),
-        }
-    }
-}
-
 macro_rules! impl_numeric_op {
     ($trait_name:ident, $method_name:ident, $op:tt) => {
         impl $trait_name for &Value {
