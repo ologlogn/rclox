@@ -23,8 +23,10 @@ impl Compiler {
     pub(super) fn unary(&mut self, scanner: &mut Scanner, chunk: &mut Chunk) {
         let operator_type = self.previous_token.token_type;
         self.parse_precedence(Precedence::Unary, scanner, chunk);
-        if operator_type == TokenType::Minus {
-            self.emit_byte(OpCode::OpNegate as u8, chunk)
+        match operator_type {
+            TokenType::Minus => self.emit_byte(OpCode::OpNegate as u8, chunk),
+            TokenType::Bang => self.emit_byte(OpCode::OpNot as u8, chunk),
+            _ => unreachable!("Unknown unary operator"),
         }
     }
     pub(super) fn binary(&mut self, scanner: &mut Scanner, chunk: &mut Chunk) {
@@ -36,6 +38,12 @@ impl Compiler {
             chunk,
         );
         match operator_type {
+            TokenType::BangEqual => self.emit_bytes(OpCode::OpEqual as u8, OpCode::OpNot as u8, chunk),
+            TokenType::EqualEqual => self.emit_byte(OpCode::OpEqual as u8, chunk),
+            TokenType::Greater => self.emit_byte(OpCode::OpGreater as u8, chunk),
+            TokenType::Less => self.emit_byte(OpCode::OpLess as u8, chunk),
+            TokenType::GreaterEqual => self.emit_bytes(OpCode::OpLess as u8, OpCode::OpNot as u8, chunk),
+            TokenType::LessEqual => self.emit_bytes(OpCode::OpGreater as u8, OpCode::OpNot as u8, chunk),
             TokenType::Plus => self.emit_byte(OpCode::OpAdd as u8, chunk),
             TokenType::Minus => self.emit_byte(OpCode::OpSubtract as u8, chunk),
             TokenType::Star => self.emit_byte(OpCode::OpMultiply as u8, chunk),
@@ -46,7 +54,7 @@ impl Compiler {
     pub(super) fn literal(&mut self, _scanner: &mut Scanner, chunk: &mut Chunk) {
         let operator_type = self.previous_token.token_type;
         match operator_type {
-            TokenType::Nil => self.emit_byte(OpCode::OPNil as u8, chunk),
+            TokenType::Nil => self.emit_byte(OpCode::OpNil as u8, chunk),
             TokenType::True => self.emit_byte(OpCode::OpTrue as u8, chunk),
             TokenType::False => self.emit_byte(OpCode::OpFalse as u8, chunk),
             _ => unreachable!("Unknown literal operator"),

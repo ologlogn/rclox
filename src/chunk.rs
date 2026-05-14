@@ -59,9 +59,13 @@ impl fmt::Debug for Chunk {
                 OpCode::OpSubtract => self.debug_simple_instruction(f, "OP_SUBTRACT", offset)?,
                 OpCode::OpMultiply => self.debug_simple_instruction(f, "OP_MULTIPLY", offset)?,
                 OpCode::OpDivide => self.debug_simple_instruction(f, "OP_DIVIDE", offset)?,
-                OpCode::OPNil => self.debug_simple_instruction(f, "OP_NIL", offset)?,
+                OpCode::OpNil => self.debug_simple_instruction(f, "OP_NIL", offset)?,
                 OpCode::OpTrue => self.debug_simple_instruction(f, "OP_TRUE", offset)?,
                 OpCode::OpFalse => self.debug_simple_instruction(f, "OP_FALSE", offset)?,
+                OpCode::OpNot => self.debug_simple_instruction(f, "OP_NOT", offset)?,
+                OpCode::OpEqual => self.debug_simple_instruction(f, "OP_EQUAL", offset)?,
+                OpCode::OpGreater => self.debug_simple_instruction(f, "OP_GREATER", offset)?,
+                OpCode::OpLess => self.debug_simple_instruction(f, "OP_LESS", offset)?,
             };
         }
         Ok(())
@@ -100,9 +104,13 @@ pub enum OpCode {
     OpSubtract,
     OpMultiply,
     OpDivide,
-    OPNil,
+    OpNil,
     OpTrue,
     OpFalse,
+    OpNot,
+    OpEqual,
+    OpGreater,
+    OpLess,
 }
 impl TryFrom<u8> for OpCode {
     type Error = String;
@@ -116,9 +124,13 @@ impl TryFrom<u8> for OpCode {
             4 => Ok(OpCode::OpSubtract),
             5 => Ok(OpCode::OpMultiply),
             6 => Ok(OpCode::OpDivide),
-            7 => Ok(OpCode::OPNil),
+            7 => Ok(OpCode::OpNil),
             8 => Ok(OpCode::OpTrue),
             9 => Ok(OpCode::OpFalse),
+            10 => Ok(OpCode::OpNot),
+            11 => Ok(OpCode::OpEqual),
+            12 => Ok(OpCode::OpGreater),
+            13 => Ok(OpCode::OpLess),
             _ => Err(format!("Unknown opcode: {}", byte)),
         }
     }

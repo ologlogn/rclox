@@ -78,6 +78,23 @@ pub fn get_rule(token_type: TokenType) -> ParseRule {
             infix: None,
             precedence: Precedence::None,
         },
+        TokenType::Bang => ParseRule {
+            prefix: Some(Compiler::unary),
+            infix: None,
+            precedence: Precedence::None,
+        },
+        TokenType::BangEqual | TokenType::EqualEqual => ParseRule {
+            prefix: None,
+            infix: Some(Compiler::binary),
+            precedence: Precedence::Equality,
+        },
+        TokenType::Greater | TokenType::GreaterEqual | TokenType::Less | TokenType::LessEqual => {
+            ParseRule {
+                prefix: None,
+                infix: Some(Compiler::binary),
+                precedence: Precedence::Comparison,
+            }
+        }
         _ => ParseRule {
             prefix: None,
             infix: None,

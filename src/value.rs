@@ -7,6 +7,26 @@ pub enum Value {
     Nil,
 }
 
+impl Value {
+    pub fn is_falsey(&self) -> bool {
+        matches!(self, Value::Nil | Value::Bool(false))
+    }
+    pub fn is_nil(&self) -> bool {
+        matches!(self, Value::Nil)
+    }
+    pub fn greater_than(&self, other: &Self) -> Result<Value, &'static str> {
+        match (self, other) {
+            (Value::Number(a), Value::Number(b)) => Ok(Value::Bool(a > b)),
+            _ => Err("Operands must be numbers."),
+        }
+    }
+    pub fn less_than(&self, other: &Self) -> Result<Value, &'static str> {
+        match (self, other) {
+            (Value::Number(a), Value::Number(b)) => Ok(Value::Bool(a < b)),
+            _ => Err("Operands must be numbers."),
+        }
+    }
+}
 impl Add for &Value {
     type Output = Result<Value, &'static str>;
     fn add(self, rhs: Self) -> Self::Output {

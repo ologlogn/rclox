@@ -14,20 +14,30 @@ pub struct Vm {
 }
 
 impl Vm {
-    fn binary_op<F>(&mut self, op: F) -> Result<(), &'static str>
+    fn binary_op<F>(&mut self, chunk: &Chunk, op: F) -> Result<(), InterpretResult>
     where
         F: FnOnce(&Value, &Value) -> Result<Value, &'static str>,
     {
         let len = self.stack.len();
         if len < 2 {
-            return Err("Stack underflow");
+            self.runtime_error("Stack underflow", chunk);
+            return Err(InterpretResult::InterpretRuntimeError);
         }
+
         let a = &self.stack[len - 2];
         let b = &self.stack[len - 1];
-        let result = op(a, b)?;
-        self.stack.truncate(len - 2);
-        self.stack.push(result);
-        Ok(())
+
+        match op(a, b) {
+            Ok(result) => {
+                self.stack.truncate(len - 2);
+                self.stack.push(result);
+                Ok(())
+            }
+            Err(msg) => {
+                self.runtime_error(msg, chunk);
+                Err(InterpretResult::InterpretRuntimeError)
+            }
+        }
     }
     pub fn new() -> Vm {
         Vm {
@@ -35,7 +45,7 @@ impl Vm {
             stack: Vec::new(),
         }
     }
-    pub fn interpret(&mut self, chunk: &Chunk) -> InterpretResult {
+    pub fn interpret(&mut self, chunk: &Chunk) -> Result<(), InterpretResult> {
         self.ip = 0;
         self.stack.clear();
         self.run(chunk)
@@ -51,12 +61,12 @@ impl Vm {
         chunk.read_constant(b as usize)
     }
 
-    fn run(&mut self, chunk: &Chunk) -> InterpretResult {
+    fn run(&mut self, chunk: &Chunk) -> Result<(), InterpretResult> {
         loop {
             match OpCode::try_from(self.read_byte(chunk)).unwrap() {
                 OpCode::OpReturn => {
                     println!("{:?}", self.stack.pop().unwrap());
-                    return InterpretResult::InterpretOk;
+                    return Ok(())
                 }
                 OpCode::OpConstant => {
                     let value = self.read_constant(chunk);
@@ -67,41 +77,32 @@ impl Vm {
                         *n = -*n;
                     }
                     _ => {
-                        return InterpretResult::InterpretRuntimeError;
+                        return Err(InterpretResult::InterpretRuntimeError);
                     }
                 },
-                OpCode::OpAdd => {
-                    if let Err(e) = self.binary_op(|a, b| a + b) {
-                        self.runtime_error(e, chunk);
-                        return InterpretResult::InterpretRuntimeError;
-                    }
-                }
-                OpCode::OpSubtract => {
-                    if let Err(e) = self.binary_op(|a, b| a - b) {
-                        self.runtime_error(e, chunk);
-                        return InterpretResult::InterpretRuntimeError;
-                    }
-                }
-                OpCode::OpMultiply => {
-                    if let Err(e) = self.binary_op(|a, b| a * b) {
-                        self.runtime_error(e, chunk);
-                        return InterpretResult::InterpretRuntimeError;
-                    }
-                }
-                OpCode::OpDivide => {
-                    if let Err(e) = self.binary_op(|a, b| a / b) {
-                        self.runtime_error(e, chunk);
-                        return InterpretResult::InterpretRuntimeError;
-                    }
-                }
-                OpCode::OPNil => self.stack.push(Value::Nil),
+                OpCode::OpAdd => self.binary_op(chunk, |a, b| a + b)?,
+                OpCode::OpSubtract => self.binary_op(chunk, |a, b| a - b)?,
+                OpCode::OpMultiply => self.binary_op(chunk, |a, b| a * b)?,
+                OpCode::OpDivide   => self.binary_op(chunk, |a, b| a / b)?,
+                OpCode::OpGreater  => self.binary_op(chunk, |a, b| a.greater_than(b))?,
+                OpCode::OpLess     => self.binary_op(chunk, |a, b| a.less_than(b))?,
+                OpCode::OpEqual    => self.binary_op(chunk, |a, b| Ok(Value::Bool(a == b)))?,
+                OpCode::OpNil => self.stack.push(Value::Nil),
                 OpCode::OpTrue => self.stack.push(Value::Bool(true)),
                 OpCode::OpFalse => self.stack.push(Value::Bool(false)),
+                OpCode::OpNot => {
+                    let value = self.stack.pop().unwrap();
+                    self.stack.push(Value::Bool(value.is_falsey()));
+                }
             }
         }
     }
     fn runtime_error(&mut self, string: &str, chunk: &Chunk) {
-        eprintln!("Runtime Error: {}: on line {}", string, chunk.get_line(self.ip - 1));
+        eprintln!(
+            "Runtime Error: {}: on line {}",
+            string,
+            chunk.get_line(self.ip - 1)
+        );
         self.stack.clear();
     }
 }
