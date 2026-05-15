@@ -39,7 +39,7 @@ impl TryFrom<u8> for Precedence {
     }
 }
 
-pub type ParseFn = fn(&mut Compiler, &mut Scanner, &mut Chunk, &mut Vm);
+pub type ParseFn = fn(&mut Compiler, bool, &mut Scanner, &mut Chunk, &mut Vm);
 
 pub struct ParseRule {
     pub prefix: Option<ParseFn>,
@@ -96,6 +96,11 @@ pub fn get_rule(token_type: TokenType) -> ParseRule {
         },
         TokenType::String => ParseRule {
             prefix: Some(Compiler::string),
+            infix: None,
+            precedence: Precedence::None,
+        },
+        TokenType::Identifier => ParseRule {
+            prefix: Some(Compiler::identifier),
             infix: None,
             precedence: Precedence::None,
         },

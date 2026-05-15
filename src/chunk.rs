@@ -1,4 +1,54 @@
 use crate::value::Value;
+#[repr(u8)]
+pub enum OpCode {
+    OpReturn,
+    OpConstant,
+    OpNegate,
+    OpAdd,
+    OpSubtract,
+    OpMultiply,
+    OpDivide,
+    OpNil,
+    OpTrue,
+    OpFalse,
+    OpNot,
+    OpEqual,
+    OpGreater,
+    OpLess,
+    OpPrint,
+    OpPop,
+    OpDefineGlobal,
+    OpGetGlobal,
+    OpSetGlobal,
+}
+impl TryFrom<u8> for OpCode {
+    type Error = String;
+
+    fn try_from(byte: u8) -> Result<Self, Self::Error> {
+        match byte {
+            0 => Ok(OpCode::OpReturn),
+            1 => Ok(OpCode::OpConstant),
+            2 => Ok(OpCode::OpNegate),
+            3 => Ok(OpCode::OpAdd),
+            4 => Ok(OpCode::OpSubtract),
+            5 => Ok(OpCode::OpMultiply),
+            6 => Ok(OpCode::OpDivide),
+            7 => Ok(OpCode::OpNil),
+            8 => Ok(OpCode::OpTrue),
+            9 => Ok(OpCode::OpFalse),
+            10 => Ok(OpCode::OpNot),
+            11 => Ok(OpCode::OpEqual),
+            12 => Ok(OpCode::OpGreater),
+            13 => Ok(OpCode::OpLess),
+            14 => Ok(OpCode::OpPrint),
+            15 => Ok(OpCode::OpPop),
+            16 => Ok(OpCode::OpDefineGlobal),
+            17 => Ok(OpCode::OpGetGlobal),
+            18 => Ok(OpCode::OpSetGlobal),
+            _ => Err(format!("Unknown opcode: {}", byte)),
+        }
+    }
+}
 
 pub struct Chunk {
     code: Vec<u8>,
@@ -18,9 +68,9 @@ impl Chunk {
         self.code.push(byte);
         self.lines.push(line);
     }
-    pub fn write_constant(&mut self, value: Value) -> usize {
+    pub fn write_constant(&mut self, value: Value) -> u8 {
         self.constants.push(value);
-        self.constants.len() - 1
+        (self.constants.len() - 1) as u8
     }
 
     pub fn read_byte(&self, offset: usize) -> u8 {
@@ -38,7 +88,6 @@ use std::fmt;
 impl fmt::Debug for Chunk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "== chunk ==")?;
-
         let mut offset = 0;
         while offset < self.code.len() {
             write!(f, "{:04} ", offset)?;
@@ -68,76 +117,24 @@ impl fmt::Debug for Chunk {
                 OpCode::OpLess => self.debug_simple_instruction(f, "OP_LESS", offset)?,
                 OpCode::OpPrint => self.debug_simple_instruction(f, "OP_PRINT", offset)?,
                 OpCode::OpPop => self.debug_simple_instruction(f, "OP_POP", offset)?,
+                OpCode::OpDefineGlobal => self.debug_constant_instruction(f, "OP_DEFINE_GLOBAL", offset)?,
+                OpCode::OpGetGlobal => self.debug_constant_instruction(f, "OP_GET_GLOBAL", offset)?,
+                OpCode::OpSetGlobal => self.debug_constant_instruction(f, "OP_SET_GLOBAL", offset)?,
             };
         }
         Ok(())
     }
 }
 impl Chunk {
-    fn debug_simple_instruction(
-        &self,
-        f: &mut fmt::Formatter<'_>,
-        name: &str,
-        offset: usize,
-    ) -> Result<usize, fmt::Error> {
+    fn debug_simple_instruction(&self, f: &mut fmt::Formatter<'_>, name: &str, offset: usize) -> Result<usize, fmt::Error> {
         writeln!(f, "{}", name)?;
         Ok(offset + 1)
     }
 
-    fn debug_constant_instruction(
-        &self,
-        f: &mut fmt::Formatter<'_>,
-        name: &str,
-        offset: usize,
-    ) -> Result<usize, fmt::Error> {
+    fn debug_constant_instruction(&self, f: &mut fmt::Formatter<'_>, name: &str, offset: usize) -> Result<usize, fmt::Error> {
         let constant_index = self.code[offset + 1] as usize;
         let value = &self.constants[constant_index];
-        writeln!(f, "{:<16} {:4} {:?}", name, constant_index, value)?;
+        writeln!(f, "{:<16} {:4} {:?}: {}", name, constant_index, value, value)?;
         Ok(offset + 2)
-    }
-}
-
-#[repr(u8)]
-pub enum OpCode {
-    OpReturn,
-    OpConstant,
-    OpNegate,
-    OpAdd,
-    OpSubtract,
-    OpMultiply,
-    OpDivide,
-    OpNil,
-    OpTrue,
-    OpFalse,
-    OpNot,
-    OpEqual,
-    OpGreater,
-    OpLess,
-    OpPrint,
-    OpPop,
-}
-impl TryFrom<u8> for OpCode {
-    type Error = String;
-
-    fn try_from(byte: u8) -> Result<Self, Self::Error> {
-        match byte {
-            0 => Ok(OpCode::OpReturn),
-            1 => Ok(OpCode::OpConstant),
-            2 => Ok(OpCode::OpNegate),
-            3 => Ok(OpCode::OpAdd),
-            4 => Ok(OpCode::OpSubtract),
-            5 => Ok(OpCode::OpMultiply),
-            6 => Ok(OpCode::OpDivide),
-            7 => Ok(OpCode::OpNil),
-            8 => Ok(OpCode::OpTrue),
-            9 => Ok(OpCode::OpFalse),
-            10 => Ok(OpCode::OpNot),
-            11 => Ok(OpCode::OpEqual),
-            12 => Ok(OpCode::OpGreater),
-            13 => Ok(OpCode::OpLess),
-            14 => Ok(OpCode::OpPrint),
-            15 => Ok(OpCode::OpPop),
-            _ => Err(format!("Unknown opcode: {}", byte)),
-        }
     }
 }

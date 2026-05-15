@@ -31,10 +31,7 @@ impl Scanner {
         &self.source[token.start..token.start + token.length]
     }
     fn char_at_nth(&self, start: usize, offset: usize) -> char {
-        self.source
-            .get(start..)
-            .and_then(|slice| slice.chars().nth(offset))
-            .unwrap_or('\0')
+        self.source.get(start..).and_then(|slice| slice.chars().nth(offset)).unwrap_or('\0')
     }
 
     fn peek(&self) -> char {

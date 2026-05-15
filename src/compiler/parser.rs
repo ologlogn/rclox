@@ -42,12 +42,56 @@ impl Compiler {
         }
     }
     pub(super) fn declaration(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
-        self.statement(scanner, chunk, vm);
+        if self.match_token_type(TokenType::Var, scanner) {
+            self.var_declaration(scanner, chunk, vm);
+        } else {
+            self.statement(scanner, chunk, vm);
+        }
         if self.panic_mode {
-            self.synchronize();
+            self.synchronize(scanner);
         }
     }
-    fn synchronize(&mut self) {}
+    fn identifier_constant(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) -> u8 {
+        let name = scanner.get_lexeme(self.previous_token);
+        let var_name = vm.allocate_string(name);
+        chunk.write_constant(Value::Object(var_name))
+    }
+    fn parse_variable(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) -> u8 {
+        self.consume(TokenType::Identifier, "Expected Variable name", scanner);
+        self.identifier_constant(scanner, chunk, vm)
+    }
+    fn var_declaration(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
+        let constant = self.parse_variable(scanner, chunk, vm);
+        if self.match_token_type(TokenType::Equal, scanner) {
+            self.expression(scanner, chunk, vm);
+        } else {
+            self.emit_byte(OpCode::OpNil as u8, chunk);
+        }
+        self.consume(TokenType::Semicolon, "Expected Semicolon after declaration.", scanner);
+        self.emit_bytes(OpCode::OpDefineGlobal as u8, constant, chunk);
+    }
+    fn synchronize(&mut self, scanner: &mut Scanner) {
+        self.panic_mode = false;
+        while self.current_token.token_type != TokenType::EOF {
+            if self.previous_token.token_type == TokenType::Semicolon {
+                return;
+            }
+            match self.current_token.token_type {
+                TokenType::Class
+                | TokenType::Fun
+                | TokenType::If
+                | TokenType::While
+                | TokenType::Var
+                | TokenType::For
+                | TokenType::Print
+                | TokenType::Return => {
+                    return;
+                }
+                _ => {}
+            }
+            self.advance(scanner)
+        }
+    }
     fn statement(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
         if self.match_token_type(TokenType::Print, scanner) {
             self.print_statement(scanner, chunk, vm);
@@ -82,10 +126,11 @@ impl Compiler {
     fn parse_precedence(&mut self, precedence: Precedence, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
         self.advance(scanner);
         // prefix
+        let can_assign = precedence <= Precedence::Assignment;
         let prefix_rule = get_rule(self.previous_token.token_type).prefix;
         match prefix_rule {
             Some(prefix_fn) => {
-                prefix_fn(self, scanner, chunk, vm);
+                prefix_fn(self, can_assign, scanner, chunk, vm);
             }
             None => {
                 self.error_at(self.previous_token, "Expect expression.", scanner);
@@ -97,8 +142,11 @@ impl Compiler {
             self.advance(scanner);
             let infix_rule = get_rule(self.previous_token.token_type).infix;
             if let Some(infix_fn) = infix_rule {
-                infix_fn(self, scanner, chunk, vm);
+                infix_fn(self, can_assign, scanner, chunk, vm);
             }
+        }
+        if can_assign && self.match_token_type(TokenType::Equal, scanner) {
+            self.error_at(self.previous_token, "Invalid assignment target.", scanner);
         }
     }
     pub(super) fn expression(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
@@ -106,17 +154,17 @@ impl Compiler {
     }
 
     // ======= Pratt Parser functions  =========
-    pub(super) fn number(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, _vm: &mut Vm) {
+    pub(super) fn number(&mut self, _can_assign: bool, scanner: &mut Scanner, chunk: &mut Chunk, _vm: &mut Vm) {
         let lexeme = scanner.get_lexeme(self.previous_token);
         let val = Value::Number(lexeme.parse().unwrap());
         self.emit_constant(val, chunk);
     }
 
-    pub(super) fn grouping(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
+    pub(super) fn grouping(&mut self, _can_assign: bool, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
         self.expression(scanner, chunk, vm);
         self.consume(TokenType::RightParen, "Expect ')' after expression", scanner);
     }
-    pub(super) fn unary(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
+    pub(super) fn unary(&mut self, _can_assign: bool, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
         let operator_type = self.previous_token.token_type;
         self.parse_precedence(Precedence::Unary, scanner, chunk, vm);
         match operator_type {
@@ -125,15 +173,10 @@ impl Compiler {
             _ => unreachable!("Unknown unary operator"),
         }
     }
-    pub(super) fn binary(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
+    pub(super) fn binary(&mut self, _can_assign: bool, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
         let operator_type = self.previous_token.token_type;
         let rule = get_rule(operator_type);
-        self.parse_precedence(
-            Precedence::try_from(rule.precedence as u8 + 1).unwrap(),
-            scanner,
-            chunk,
-            vm,
-        );
+        self.parse_precedence(Precedence::try_from(rule.precedence as u8 + 1).unwrap(), scanner, chunk, vm);
         match operator_type {
             TokenType::BangEqual => self.emit_bytes(OpCode::OpEqual as u8, OpCode::OpNot as u8, chunk),
             TokenType::EqualEqual => self.emit_byte(OpCode::OpEqual as u8, chunk),
@@ -148,7 +191,7 @@ impl Compiler {
             _ => unreachable!("Unknown binary operator"),
         }
     }
-    pub(super) fn literal(&mut self, _scanner: &mut Scanner, chunk: &mut Chunk, _vm: &mut Vm) {
+    pub(super) fn literal(&mut self, _can_assign: bool, _scanner: &mut Scanner, chunk: &mut Chunk, _vm: &mut Vm) {
         let operator_type = self.previous_token.token_type;
         match operator_type {
             TokenType::Nil => self.emit_byte(OpCode::OpNil as u8, chunk),
@@ -157,10 +200,19 @@ impl Compiler {
             _ => unreachable!("Unknown literal operator"),
         }
     }
-    pub(super) fn string(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
+    pub(super) fn string(&mut self, _can_assign: bool, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
         let lexeme = scanner.get_lexeme(self.previous_token);
         let string_value = lexeme[1..lexeme.len() - 1].to_string();
         let obj_ptr = vm.allocate_string(string_value.as_str());
         self.emit_constant(Value::Object(obj_ptr), chunk);
+    }
+    pub(super) fn identifier(&mut self, can_assign: bool, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
+        let constant = self.identifier_constant(scanner, chunk, vm);
+        if can_assign && self.match_token_type(TokenType::Equal, scanner) {
+            self.expression(scanner, chunk, vm);
+            self.emit_bytes(OpCode::OpSetGlobal as u8, constant, chunk);
+        } else {
+            self.emit_bytes(OpCode::OpGetGlobal as u8, constant, chunk);
+        }
     }
 }

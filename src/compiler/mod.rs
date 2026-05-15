@@ -32,7 +32,7 @@ impl Compiler {
 
     fn emit_constant(&mut self, val: Value, chunk: &mut Chunk) {
         let constant = chunk.write_constant(val);
-        self.emit_bytes(OpCode::OpConstant as u8, constant as u8, chunk);
+        self.emit_bytes(OpCode::OpConstant as u8, constant, chunk);
     }
     fn emit_return(&self, chunk: &mut Chunk) {
         self.emit_byte(OpCode::OpReturn as u8, chunk)

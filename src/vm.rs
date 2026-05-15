@@ -15,6 +15,7 @@ pub struct Vm {
     stack: Vec<Value>,
     heap: Heap,
     strings: HashMap<String, *mut Object>,
+    globals: HashMap<String, Value>,
 }
 
 impl Vm {
@@ -50,7 +51,11 @@ impl Vm {
             stack: Vec::new(),
             heap: Heap::new(),
             strings: HashMap::new(),
+            globals: HashMap::new(),
         }
+    }
+    fn peek(&self, index: usize) -> Value {
+        self.stack[index].clone()
     }
     pub fn interpret(&mut self, chunk: &Chunk) -> Result<(), InterpretResult> {
         self.ip = 0;
@@ -68,6 +73,11 @@ impl Vm {
         chunk.read_constant(b as usize)
     }
 
+    fn read_string(&mut self, chunk: &Chunk) -> String {
+        let name = self.read_constant(chunk);
+        format!("{}", name)
+    }
+
     fn run(&mut self, chunk: &Chunk) -> Result<(), InterpretResult> {
         loop {
             match OpCode::try_from(self.read_byte(chunk)).unwrap() {
@@ -80,6 +90,28 @@ impl Vm {
                 }
                 OpCode::OpPop => {
                     self.stack.pop();
+                }
+                OpCode::OpDefineGlobal => {
+                    let name = self.read_string(chunk);
+                    self.globals.insert(name, self.stack.pop().unwrap());
+                }
+                OpCode::OpGetGlobal => {
+                    let name = self.read_string(chunk);
+                    if let Some(obj) = self.globals.get(&name) {
+                        self.stack.push(obj.clone());
+                    } else {
+                        self.runtime_error(format!("Undefined variable {}", name).as_str(), chunk);
+                        return Err(InterpretResult::InterpretRuntimeError);
+                    }
+                }
+                OpCode::OpSetGlobal => {
+                    let name = self.read_string(chunk);
+                    if self.globals.contains_key(&name) {
+                        self.globals.insert(name, self.peek(self.stack.len() - 1));
+                    } else {
+                        self.runtime_error(format!("Undefined variable {}", name).as_str(), chunk);
+                        return Err(InterpretResult::InterpretRuntimeError);
+                    }
                 }
                 OpCode::OpNegate => match self.stack.last_mut() {
                     Some(Value::Number(n)) => {

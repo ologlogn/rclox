@@ -5,9 +5,7 @@ pub struct Heap {
 }
 impl Heap {
     pub fn new() -> Self {
-        Self {
-            objects: std::ptr::null_mut(),
-        }
+        Self { objects: std::ptr::null_mut() }
     }
     pub fn allocate(&mut self, obj_type: ObjectType) -> *mut Object {
         let obj = Box::new(Object {
