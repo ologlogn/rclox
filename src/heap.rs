@@ -26,7 +26,7 @@ impl Drop for Heap {
         while !current.is_null() {
             unsafe {
                 let next = (*current).next;
-                let _unreached_object = Box::from_raw(current);
+                drop(Box::from_raw(current));
                 current = next;
             }
         }

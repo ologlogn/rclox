@@ -66,6 +66,8 @@ impl fmt::Debug for Chunk {
                 OpCode::OpEqual => self.debug_simple_instruction(f, "OP_EQUAL", offset)?,
                 OpCode::OpGreater => self.debug_simple_instruction(f, "OP_GREATER", offset)?,
                 OpCode::OpLess => self.debug_simple_instruction(f, "OP_LESS", offset)?,
+                OpCode::OpPrint => self.debug_simple_instruction(f, "OP_PRINT", offset)?,
+                OpCode::OpPop => self.debug_simple_instruction(f, "OP_POP", offset)?,
             };
         }
         Ok(())
@@ -111,6 +113,8 @@ pub enum OpCode {
     OpEqual,
     OpGreater,
     OpLess,
+    OpPrint,
+    OpPop,
 }
 impl TryFrom<u8> for OpCode {
     type Error = String;
@@ -131,6 +135,8 @@ impl TryFrom<u8> for OpCode {
             11 => Ok(OpCode::OpEqual),
             12 => Ok(OpCode::OpGreater),
             13 => Ok(OpCode::OpLess),
+            14 => Ok(OpCode::OpPrint),
+            15 => Ok(OpCode::OpPop),
             _ => Err(format!("Unknown opcode: {}", byte)),
         }
     }

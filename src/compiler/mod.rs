@@ -5,7 +5,6 @@ use crate::value::Value;
 use crate::vm::Vm;
 
 mod parser;
-mod parser_fns;
 mod rules;
 
 pub struct Compiler {
@@ -43,8 +42,9 @@ impl Compiler {
     }
     pub fn compile(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) -> bool {
         self.advance(scanner);
-        self.expression(scanner, chunk, vm);
-        self.consume(TokenType::EOF, "Expect end of expression", scanner);
+        while !self.match_token_type(TokenType::EOF, scanner) {
+            self.declaration(scanner, chunk, vm);
+        }
         self.end(chunk);
         !self.had_error
     }

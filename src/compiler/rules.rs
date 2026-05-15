@@ -89,13 +89,11 @@ pub fn get_rule(token_type: TokenType) -> ParseRule {
             infix: Some(Compiler::binary),
             precedence: Precedence::Equality,
         },
-        TokenType::Greater | TokenType::GreaterEqual | TokenType::Less | TokenType::LessEqual => {
-            ParseRule {
-                prefix: None,
-                infix: Some(Compiler::binary),
-                precedence: Precedence::Comparison,
-            }
-        }
+        TokenType::Greater | TokenType::GreaterEqual | TokenType::Less | TokenType::LessEqual => ParseRule {
+            prefix: None,
+            infix: Some(Compiler::binary),
+            precedence: Precedence::Comparison,
+        },
         TokenType::String => ParseRule {
             prefix: Some(Compiler::string),
             infix: None,

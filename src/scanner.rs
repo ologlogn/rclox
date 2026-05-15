@@ -144,10 +144,7 @@ impl Scanner {
     fn check_keyword(&self, start_offset: usize, rest: &str, token_type: TokenType) -> TokenType {
         let check_start = self.start + start_offset;
         let check_end = check_start + rest.len();
-        if check_end <= self.source.len()
-            && self.current == check_end
-            && &self.source[check_start..check_end] == rest
-        {
+        if check_end <= self.source.len() && self.current == check_end && &self.source[check_start..check_end] == rest {
             token_type
         } else {
             TokenType::Identifier

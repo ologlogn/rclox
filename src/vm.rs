@@ -72,12 +72,14 @@ impl Vm {
         loop {
             match OpCode::try_from(self.read_byte(chunk)).unwrap() {
                 OpCode::OpReturn => {
-                    println!("{}", self.stack.pop().unwrap());
                     return Ok(());
                 }
                 OpCode::OpConstant => {
                     let value = self.read_constant(chunk);
                     self.stack.push(value);
+                }
+                OpCode::OpPop => {
+                    self.stack.pop();
                 }
                 OpCode::OpNegate => match self.stack.last_mut() {
                     Some(Value::Number(n)) => {
@@ -106,8 +108,7 @@ impl Vm {
                             let obj_b = &**b_ptr;
                             match (&obj_a.obj_type, &obj_b.obj_type) {
                                 (ObjectType::String(str_a), ObjectType::String(str_b)) => {
-                                    let mut new_string =
-                                        String::with_capacity(str_a.len() + str_b.len());
+                                    let mut new_string = String::with_capacity(str_a.len() + str_b.len());
                                     new_string.push_str(str_a);
                                     new_string.push_str(str_b);
                                     let new_ptr = self.allocate_string(new_string.as_str());
@@ -116,10 +117,7 @@ impl Vm {
                             }
                         },
                         _ => {
-                            self.runtime_error(
-                                "Operands must be two numbers or two strings",
-                                chunk,
-                            );
+                            self.runtime_error("Operands must be two numbers or two strings", chunk);
                             return Err(InterpretResult::InterpretRuntimeError);
                         }
                     }
@@ -140,15 +138,12 @@ impl Vm {
                     let value = self.stack.pop().unwrap();
                     self.stack.push(Value::Bool(value.is_falsey()));
                 }
+                OpCode::OpPrint => println!("{}", self.stack.pop().unwrap()),
             }
         }
     }
     fn runtime_error(&mut self, string: &str, chunk: &Chunk) {
-        eprintln!(
-            "Runtime Error: {}: on line {}",
-            string,
-            chunk.get_line(self.ip - 1)
-        );
+        eprintln!("Runtime Error: {}: on line {}", string, chunk.get_line(self.ip - 1));
         self.ip = 0;
         self.stack.clear();
     }
@@ -156,8 +151,8 @@ impl Vm {
         self.heap.allocate(obj_type)
     }
     pub fn allocate_string(&mut self, string: &str) -> *mut Object {
-        if self.strings.contains_key(string) {
-            return self.strings[string];
+        if let Some(&ptr) = self.strings.get(string) {
+            return ptr;
         }
         let str_ptr = self.allocate_object(ObjectType::String(string.to_string()));
         self.strings.insert(string.to_string(), str_ptr);
