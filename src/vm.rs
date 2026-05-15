@@ -113,6 +113,14 @@ impl Vm {
                         return Err(InterpretResult::InterpretRuntimeError);
                     }
                 }
+                OpCode::OpGetLocal => {
+                    let slot = self.read_byte(chunk);
+                    self.stack.push(self.stack[slot as usize].clone());
+                }
+                OpCode::OpSetLocal => {
+                    let slot = self.read_byte(chunk);
+                    self.stack[slot as usize] = self.peek(self.stack.len() - 1);
+                }
                 OpCode::OpNegate => match self.stack.last_mut() {
                     Some(Value::Number(n)) => {
                         *n = -*n;

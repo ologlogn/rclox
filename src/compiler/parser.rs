@@ -1,4 +1,4 @@
-use super::Compiler;
+use super::{Compiler, Local};
 use crate::chunk::{Chunk, OpCode};
 use crate::compiler::rules::{Precedence, get_rule};
 use crate::scanner::Scanner;
@@ -56,8 +56,35 @@ impl Compiler {
         let var_name = vm.allocate_string(name);
         chunk.write_constant(Value::Object(var_name))
     }
+    fn declare_variable(&mut self, scanner: &mut Scanner) {
+        if self.scope_depth == 0 {
+            return;
+        }
+        let token = self.previous_token;
+        for local in self.locals.iter().rev() {
+            if local.depth < self.scope_depth {
+                break;
+            }
+            if token_equals(token, local.token, scanner) {
+                self.error_at(token, "Already a variable with this name", scanner);
+                return;
+            }
+        }
+        self.add_local(token);
+    }
+    fn add_local(&mut self, token: Token) {
+        let local = Local {
+            token,
+            depth: self.scope_depth,
+        };
+        self.locals.push(local);
+    }
     fn parse_variable(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) -> u8 {
         self.consume(TokenType::Identifier, "Expected Variable name", scanner);
+        self.declare_variable(scanner);
+        if self.scope_depth > 0 {
+            return 0; // a dummy value, not pushed to chunk
+        }
         self.identifier_constant(scanner, chunk, vm)
     }
     fn var_declaration(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
@@ -68,6 +95,9 @@ impl Compiler {
             self.emit_byte(OpCode::OpNil as u8, chunk);
         }
         self.consume(TokenType::Semicolon, "Expected Semicolon after declaration.", scanner);
+        if self.scope_depth > 0 {
+            return;
+        }
         self.emit_bytes(OpCode::OpDefineGlobal as u8, constant, chunk);
     }
     fn synchronize(&mut self, scanner: &mut Scanner) {
@@ -95,11 +125,33 @@ impl Compiler {
     fn statement(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
         if self.match_token_type(TokenType::Print, scanner) {
             self.print_statement(scanner, chunk, vm);
+        } else if self.match_token_type(TokenType::LeftBrace, scanner) {
+            self.begin_scope();
+            self.block_statement(scanner, chunk, vm);
+            self.end_scope(chunk);
         } else {
             self.expression_statement(scanner, chunk, vm);
         }
     }
-
+    fn begin_scope(&mut self) {
+        self.scope_depth += 1;
+    }
+    fn end_scope(&mut self, chunk: &mut Chunk) {
+        self.scope_depth -= 1;
+        while let Some(local) = self.locals.last() {
+            if local.depth <= self.scope_depth {
+                break;
+            }
+            self.locals.pop();
+            self.emit_byte(OpCode::OpPop as u8, chunk);
+        }
+    }
+    fn block_statement(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::EOF) {
+            self.declaration(scanner, chunk, vm);
+        }
+        self.consume(TokenType::RightBrace, "Expected '}' after the block", scanner);
+    }
     pub(super) fn match_token_type(&mut self, token_type: TokenType, scanner: &mut Scanner) -> bool {
         if !self.check(token_type) {
             false
@@ -111,18 +163,31 @@ impl Compiler {
     fn check(&self, token_type: TokenType) -> bool {
         self.current_token.token_type == token_type
     }
-    fn print_statement(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
+    fn consume_expression(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
         self.expression(scanner, chunk, vm);
         self.consume(TokenType::Semicolon, "Expect ';' after statement.", scanner);
+    }
+    fn print_statement(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
+        self.consume_expression(scanner, chunk, vm);
         self.emit_byte(OpCode::OpPrint as u8, chunk);
     }
 
     fn expression_statement(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
-        self.expression(scanner, chunk, vm);
-        self.consume(TokenType::Semicolon, "Expect ';' after statement.", scanner);
+        self.consume_expression(scanner, chunk, vm);
         self.emit_byte(OpCode::OpPop as u8, chunk);
     }
 
+    fn resolve_local(&mut self, scanner: &Scanner) -> (bool, u8) {
+        let token = self.previous_token;
+        for i in (0..self.locals.len()).rev() {
+            let local = &self.locals[i];
+            if token_equals(local.token, token, scanner) {
+                return (true, i as u8);
+            }
+        }
+        (false, 0)
+    }
+    // ======= Pratt parser ==========
     fn parse_precedence(&mut self, precedence: Precedence, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
         self.advance(scanner);
         // prefix
@@ -147,13 +212,14 @@ impl Compiler {
         }
         if can_assign && self.match_token_type(TokenType::Equal, scanner) {
             self.error_at(self.previous_token, "Invalid assignment target.", scanner);
+            return;
         }
     }
     pub(super) fn expression(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
         self.parse_precedence(Precedence::Assignment, scanner, chunk, vm)
     }
 
-    // ======= Pratt Parser functions  =========
+    // ======= Functions =========
     pub(super) fn number(&mut self, _can_assign: bool, scanner: &mut Scanner, chunk: &mut Chunk, _vm: &mut Vm) {
         let lexeme = scanner.get_lexeme(self.previous_token);
         let val = Value::Number(lexeme.parse().unwrap());
@@ -207,12 +273,26 @@ impl Compiler {
         self.emit_constant(Value::Object(obj_ptr), chunk);
     }
     pub(super) fn identifier(&mut self, can_assign: bool, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
-        let constant = self.identifier_constant(scanner, chunk, vm);
+        let get_op: OpCode;
+        let set_op: OpCode;
+        let (is_local, mut constant) = self.resolve_local(scanner);
+        if is_local {
+            get_op = OpCode::OpGetLocal;
+            set_op = OpCode::OpSetLocal;
+        } else {
+            get_op = OpCode::OpGetGlobal;
+            set_op = OpCode::OpSetGlobal;
+            constant = self.identifier_constant(scanner, chunk, vm);
+        }
         if can_assign && self.match_token_type(TokenType::Equal, scanner) {
             self.expression(scanner, chunk, vm);
-            self.emit_bytes(OpCode::OpSetGlobal as u8, constant, chunk);
+            self.emit_bytes(set_op as u8, constant, chunk);
         } else {
-            self.emit_bytes(OpCode::OpGetGlobal as u8, constant, chunk);
+            self.emit_bytes(get_op as u8, constant, chunk);
         }
     }
+}
+
+fn token_equals(a: Token, b: Token, scanner: &Scanner) -> bool {
+    a.length == b.length && scanner.get_lexeme(a) == scanner.get_lexeme(b)
 }

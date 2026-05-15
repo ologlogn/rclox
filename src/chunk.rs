@@ -20,6 +20,8 @@ pub enum OpCode {
     OpDefineGlobal,
     OpGetGlobal,
     OpSetGlobal,
+    OpGetLocal,
+    OpSetLocal,
 }
 impl TryFrom<u8> for OpCode {
     type Error = String;
@@ -45,6 +47,8 @@ impl TryFrom<u8> for OpCode {
             16 => Ok(OpCode::OpDefineGlobal),
             17 => Ok(OpCode::OpGetGlobal),
             18 => Ok(OpCode::OpSetGlobal),
+            19 => Ok(OpCode::OpGetLocal),
+            20 => Ok(OpCode::OpSetLocal),
             _ => Err(format!("Unknown opcode: {}", byte)),
         }
     }
@@ -120,6 +124,8 @@ impl fmt::Debug for Chunk {
                 OpCode::OpDefineGlobal => self.debug_constant_instruction(f, "OP_DEFINE_GLOBAL", offset)?,
                 OpCode::OpGetGlobal => self.debug_constant_instruction(f, "OP_GET_GLOBAL", offset)?,
                 OpCode::OpSetGlobal => self.debug_constant_instruction(f, "OP_SET_GLOBAL", offset)?,
+                OpCode::OpGetLocal => self.debug_byte_instruction(f, "OP_GET_LOCAL", offset)?,
+                OpCode::OpSetLocal => self.debug_byte_instruction(f, "OP_SET_LOCAL", offset)?,
             };
         }
         Ok(())
@@ -135,6 +141,11 @@ impl Chunk {
         let constant_index = self.code[offset + 1] as usize;
         let value = &self.constants[constant_index];
         writeln!(f, "{:<16} {:4} {:?}: {}", name, constant_index, value, value)?;
+        Ok(offset + 2)
+    }
+    fn debug_byte_instruction(&self, f: &mut fmt::Formatter<'_>, name: &str, offset: usize) -> Result<usize, fmt::Error> {
+        let stack_slot = self.code[offset + 1] as usize;
+        writeln!(f, "{:<16} {:4}", name, stack_slot)?;
         Ok(offset + 2)
     }
 }

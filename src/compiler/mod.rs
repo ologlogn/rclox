@@ -12,6 +12,12 @@ pub struct Compiler {
     previous_token: Token,
     had_error: bool,
     panic_mode: bool,
+    locals: Vec<Local>,
+    scope_depth: usize,
+}
+pub struct Local {
+    token: Token,
+    depth: usize,
 }
 impl Compiler {
     pub(crate) fn new() -> Self {
@@ -20,6 +26,8 @@ impl Compiler {
             previous_token: Token::default(),
             had_error: false,
             panic_mode: false,
+            locals: vec![],
+            scope_depth: 0,
         }
     }
     fn emit_byte(&self, byte: u8, chunk: &mut Chunk) {
