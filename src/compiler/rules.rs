@@ -1,6 +1,5 @@
 use super::Compiler;
 use crate::chunk::Chunk;
-use crate::scanner::Scanner;
 use crate::token::TokenType;
 use crate::vm::Vm;
 
@@ -39,7 +38,7 @@ impl TryFrom<u8> for Precedence {
     }
 }
 
-pub type ParseFn = fn(&mut Compiler, bool, &mut Scanner, &mut Chunk, &mut Vm);
+pub type ParseFn = fn(&mut Compiler, bool, &mut Chunk, &mut Vm);
 
 pub struct ParseRule {
     pub prefix: Option<ParseFn>,

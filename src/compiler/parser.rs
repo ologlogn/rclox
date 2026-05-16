@@ -1,13 +1,12 @@
 use super::{Compiler, Local};
 use crate::chunk::{Chunk, OpCode};
 use crate::compiler::rules::{Precedence, get_rule};
-use crate::scanner::Scanner;
 use crate::token::{Token, TokenType};
 use crate::value::Value;
 use crate::vm::Vm;
 
 impl Compiler {
-    pub(super) fn error_at(&mut self, token: Token, message: &str, scanner: &Scanner) {
+    pub(super) fn error_at(&mut self, token: Token, message: &str) {
         if self.panic_mode {
             return;
         }
@@ -17,46 +16,46 @@ impl Compiler {
             TokenType::EOF => eprint!(" at end"),
             TokenType::Error(_) => {}
             _ => {
-                eprint!(" at '{}'", scanner.get_lexeme(token));
+                eprint!(" at '{}'", self.scanner.get_lexeme(token));
             }
         }
         eprintln!(": {}", message);
         self.had_error = true;
     }
-    pub(super) fn advance(&mut self, scanner: &mut Scanner) {
+    pub(super) fn advance(&mut self) {
         self.previous_token = self.current_token;
         loop {
-            self.current_token = scanner.next_token();
+            self.current_token = self.scanner.next_token();
             if let TokenType::Error(message) = self.current_token.token_type {
-                self.error_at(self.current_token, &message, scanner);
+                self.error_at(self.current_token, &message);
             } else {
                 break;
             }
         }
     }
-    pub(super) fn consume(&mut self, token_type: TokenType, message: &str, scanner: &mut Scanner) {
+    pub(super) fn consume(&mut self, token_type: TokenType, message: &str) {
         if self.current_token.token_type != token_type {
-            self.error_at(self.current_token, message, scanner)
+            self.error_at(self.current_token, message)
         } else {
-            self.advance(scanner);
+            self.advance();
         }
     }
-    pub(super) fn declaration(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
-        if self.match_token_type(TokenType::Var, scanner) {
-            self.var_declaration(scanner, chunk, vm);
+    pub(super) fn declaration(&mut self, chunk: &mut Chunk, vm: &mut Vm) {
+        if self.match_token_type(TokenType::Var) {
+            self.var_declaration(chunk, vm);
         } else {
-            self.statement(scanner, chunk, vm);
+            self.statement(chunk, vm);
         }
         if self.panic_mode {
-            self.synchronize(scanner);
+            self.synchronize();
         }
     }
-    fn identifier_constant(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) -> u8 {
-        let name = scanner.get_lexeme(self.previous_token);
+    fn identifier_constant(&mut self, chunk: &mut Chunk, vm: &mut Vm) -> u8 {
+        let name = self.scanner.get_lexeme(self.previous_token);
         let var_name = vm.allocate_string(name);
         chunk.write_constant(Value::Object(var_name))
     }
-    fn declare_variable(&mut self, scanner: &mut Scanner) {
+    fn declare_variable(&mut self) {
         if self.scope_depth == 0 {
             return;
         }
@@ -65,8 +64,8 @@ impl Compiler {
             if local.depth < self.scope_depth {
                 break;
             }
-            if token_equals(token, local.token, scanner) {
-                self.error_at(token, "Already a variable with this name", scanner);
+            if self.token_equals(token, local.token) {
+                self.error_at(token, "Already a variable with this name");
                 return;
             }
         }
@@ -80,29 +79,29 @@ impl Compiler {
         };
         self.locals.push(local);
     }
-    fn parse_variable(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) -> u8 {
-        self.consume(TokenType::Identifier, "Expected Variable name", scanner);
-        self.declare_variable(scanner);
+    fn parse_variable(&mut self, chunk: &mut Chunk, vm: &mut Vm) -> u8 {
+        self.consume(TokenType::Identifier, "Expected Variable name");
+        self.declare_variable();
         if self.scope_depth > 0 {
             return 0; // a dummy value, not pushed to chunk
         }
-        self.identifier_constant(scanner, chunk, vm)
+        self.identifier_constant(chunk, vm)
     }
-    fn var_declaration(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
-        let constant = self.parse_variable(scanner, chunk, vm);
-        if self.match_token_type(TokenType::Equal, scanner) {
-            self.expression(scanner, chunk, vm);
+    fn var_declaration(&mut self, chunk: &mut Chunk, vm: &mut Vm) {
+        let constant = self.parse_variable(chunk, vm);
+        if self.match_token_type(TokenType::Equal) {
+            self.expression(chunk, vm);
         } else {
             self.emit_byte(OpCode::OpNil as u8, chunk);
         }
-        self.consume(TokenType::Semicolon, "Expected Semicolon after declaration.", scanner);
+        self.consume(TokenType::Semicolon, "Expected Semicolon after declaration.");
         if self.scope_depth > 0 {
             self.locals.last_mut().unwrap().is_initialized = true;
             return;
         }
         self.emit_bytes(OpCode::OpDefineGlobal as u8, constant, chunk);
     }
-    fn synchronize(&mut self, scanner: &mut Scanner) {
+    fn synchronize(&mut self) {
         self.panic_mode = false;
         while self.current_token.token_type != TokenType::EOF {
             if self.previous_token.token_type == TokenType::Semicolon {
@@ -121,18 +120,18 @@ impl Compiler {
                 }
                 _ => {}
             }
-            self.advance(scanner)
+            self.advance()
         }
     }
-    fn statement(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
-        if self.match_token_type(TokenType::Print, scanner) {
-            self.print_statement(scanner, chunk, vm);
-        } else if self.match_token_type(TokenType::LeftBrace, scanner) {
+    fn statement(&mut self, chunk: &mut Chunk, vm: &mut Vm) {
+        if self.match_token_type(TokenType::Print) {
+            self.print_statement(chunk, vm);
+        } else if self.match_token_type(TokenType::LeftBrace) {
             self.begin_scope();
-            self.block_statement(scanner, chunk, vm);
+            self.block_statement(chunk, vm);
             self.end_scope(chunk);
         } else {
-            self.expression_statement(scanner, chunk, vm);
+            self.expression_statement(chunk, vm);
         }
     }
     fn begin_scope(&mut self) {
@@ -153,43 +152,43 @@ impl Compiler {
             self.emit_bytes(OpCode::OpPopN as u8, c, chunk);
         }
     }
-    fn block_statement(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
+    fn block_statement(&mut self, chunk: &mut Chunk, vm: &mut Vm) {
         while !self.check(TokenType::RightBrace) && !self.check(TokenType::EOF) {
-            self.declaration(scanner, chunk, vm);
+            self.declaration(chunk, vm);
         }
-        self.consume(TokenType::RightBrace, "Expected '}' after the block", scanner);
+        self.consume(TokenType::RightBrace, "Expected '}' after the block");
     }
-    pub(super) fn match_token_type(&mut self, token_type: TokenType, scanner: &mut Scanner) -> bool {
+    pub(super) fn match_token_type(&mut self, token_type: TokenType) -> bool {
         if !self.check(token_type) {
             false
         } else {
-            self.advance(scanner);
+            self.advance();
             true
         }
     }
     fn check(&self, token_type: TokenType) -> bool {
         self.current_token.token_type == token_type
     }
-    fn consume_expression(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
-        self.expression(scanner, chunk, vm);
-        self.consume(TokenType::Semicolon, "Expect ';' after statement.", scanner);
+    fn consume_expression(&mut self, chunk: &mut Chunk, vm: &mut Vm) {
+        self.expression(chunk, vm);
+        self.consume(TokenType::Semicolon, "Expect ';' after statement.");
     }
-    fn print_statement(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
-        self.consume_expression(scanner, chunk, vm);
+    fn print_statement(&mut self, chunk: &mut Chunk, vm: &mut Vm) {
+        self.consume_expression(chunk, vm);
         self.emit_byte(OpCode::OpPrint as u8, chunk);
     }
 
-    fn expression_statement(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
-        self.consume_expression(scanner, chunk, vm);
+    fn expression_statement(&mut self, chunk: &mut Chunk, vm: &mut Vm) {
+        self.consume_expression(chunk, vm);
         self.emit_byte(OpCode::OpPop as u8, chunk);
     }
 
-    fn resolve_local(&mut self, scanner: &Scanner) -> (bool, u8) {
+    fn resolve_local(&mut self) -> (bool, u8) {
         let token = self.previous_token;
         let mut found_uninitialized = false;
         for i in (0..self.locals.len()).rev() {
             let local = &self.locals[i];
-            if token_equals(local.token, token, scanner) {
+            if self.token_equals(local.token, token) {
                 if !local.is_initialized {
                     found_uninitialized = true;
                     continue;
@@ -198,66 +197,69 @@ impl Compiler {
             }
         }
         if found_uninitialized {
-            self.error_at(token, "Can't read local variable in its own init", scanner);
+            self.error_at(token, "Can't read local variable in its own init");
         }
         (false, 0)
     }
+    fn token_equals(&self, a: Token, b: Token) -> bool {
+        a.length == b.length && self.scanner.get_lexeme(a) == self.scanner.get_lexeme(b)
+    }
     // ======= Pratt parser ==========
-    fn parse_precedence(&mut self, precedence: Precedence, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
-        self.advance(scanner);
+    fn parse_precedence(&mut self, precedence: Precedence, chunk: &mut Chunk, vm: &mut Vm) {
+        self.advance();
         // prefix
         let can_assign = precedence <= Precedence::Assignment;
         let prefix_rule = get_rule(self.previous_token.token_type).prefix;
         match prefix_rule {
             Some(prefix_fn) => {
-                prefix_fn(self, can_assign, scanner, chunk, vm);
+                prefix_fn(self, can_assign, chunk, vm);
             }
             None => {
-                self.error_at(self.previous_token, "Expect expression.", scanner);
+                self.error_at(self.previous_token, "Expect expression.");
                 return;
             }
         }
         // infix
         while precedence <= get_rule(self.current_token.token_type).precedence {
-            self.advance(scanner);
+            self.advance();
             let infix_rule = get_rule(self.previous_token.token_type).infix;
             if let Some(infix_fn) = infix_rule {
-                infix_fn(self, can_assign, scanner, chunk, vm);
+                infix_fn(self, can_assign, chunk, vm);
             }
         }
-        if can_assign && self.match_token_type(TokenType::Equal, scanner) {
-            self.error_at(self.previous_token, "Invalid assignment target.", scanner);
+        if can_assign && self.match_token_type(TokenType::Equal) {
+            self.error_at(self.previous_token, "Invalid assignment target.");
             return;
         }
     }
-    pub(super) fn expression(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
-        self.parse_precedence(Precedence::Assignment, scanner, chunk, vm)
+    pub(super) fn expression(&mut self, chunk: &mut Chunk, vm: &mut Vm) {
+        self.parse_precedence(Precedence::Assignment, chunk, vm)
     }
 
     // ======= Functions =========
-    pub(super) fn number(&mut self, _can_assign: bool, scanner: &mut Scanner, chunk: &mut Chunk, _vm: &mut Vm) {
-        let lexeme = scanner.get_lexeme(self.previous_token);
+    pub(super) fn number(&mut self, _can_assign: bool, chunk: &mut Chunk, _vm: &mut Vm) {
+        let lexeme = self.scanner.get_lexeme(self.previous_token);
         let val = Value::Number(lexeme.parse().unwrap());
         self.emit_constant(val, chunk);
     }
 
-    pub(super) fn grouping(&mut self, _can_assign: bool, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
-        self.expression(scanner, chunk, vm);
-        self.consume(TokenType::RightParen, "Expect ')' after expression", scanner);
+    pub(super) fn grouping(&mut self, _can_assign: bool, chunk: &mut Chunk, vm: &mut Vm) {
+        self.expression(chunk, vm);
+        self.consume(TokenType::RightParen, "Expect ')' after expression");
     }
-    pub(super) fn unary(&mut self, _can_assign: bool, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
+    pub(super) fn unary(&mut self, _can_assign: bool, chunk: &mut Chunk, vm: &mut Vm) {
         let operator_type = self.previous_token.token_type;
-        self.parse_precedence(Precedence::Unary, scanner, chunk, vm);
+        self.parse_precedence(Precedence::Unary, chunk, vm);
         match operator_type {
             TokenType::Minus => self.emit_byte(OpCode::OpNegate as u8, chunk),
             TokenType::Bang => self.emit_byte(OpCode::OpNot as u8, chunk),
             _ => unreachable!("Unknown unary operator"),
         }
     }
-    pub(super) fn binary(&mut self, _can_assign: bool, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
+    pub(super) fn binary(&mut self, _can_assign: bool, chunk: &mut Chunk, vm: &mut Vm) {
         let operator_type = self.previous_token.token_type;
         let rule = get_rule(operator_type);
-        self.parse_precedence(Precedence::try_from(rule.precedence as u8 + 1).unwrap(), scanner, chunk, vm);
+        self.parse_precedence(Precedence::try_from(rule.precedence as u8 + 1).unwrap(), chunk, vm);
         match operator_type {
             TokenType::BangEqual => self.emit_bytes(OpCode::OpEqual as u8, OpCode::OpNot as u8, chunk),
             TokenType::EqualEqual => self.emit_byte(OpCode::OpEqual as u8, chunk),
@@ -272,7 +274,7 @@ impl Compiler {
             _ => unreachable!("Unknown binary operator"),
         }
     }
-    pub(super) fn literal(&mut self, _can_assign: bool, _scanner: &mut Scanner, chunk: &mut Chunk, _vm: &mut Vm) {
+    pub(super) fn literal(&mut self, _can_assign: bool, chunk: &mut Chunk, _vm: &mut Vm) {
         let operator_type = self.previous_token.token_type;
         match operator_type {
             TokenType::Nil => self.emit_byte(OpCode::OpNil as u8, chunk),
@@ -281,33 +283,29 @@ impl Compiler {
             _ => unreachable!("Unknown literal operator"),
         }
     }
-    pub(super) fn string(&mut self, _can_assign: bool, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
-        let lexeme = scanner.get_lexeme(self.previous_token);
+    pub(super) fn string(&mut self, _can_assign: bool, chunk: &mut Chunk, vm: &mut Vm) {
+        let lexeme = self.scanner.get_lexeme(self.previous_token);
         let string_value = lexeme[1..lexeme.len() - 1].to_string();
         let obj_ptr = vm.allocate_string(string_value.as_str());
         self.emit_constant(Value::Object(obj_ptr), chunk);
     }
-    pub(super) fn identifier(&mut self, can_assign: bool, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
+    pub(super) fn identifier(&mut self, can_assign: bool, chunk: &mut Chunk, vm: &mut Vm) {
         let get_op: OpCode;
         let set_op: OpCode;
-        let (is_local, mut constant) = self.resolve_local(scanner);
+        let (is_local, mut constant) = self.resolve_local();
         if is_local {
             get_op = OpCode::OpGetLocal;
             set_op = OpCode::OpSetLocal;
         } else {
             get_op = OpCode::OpGetGlobal;
             set_op = OpCode::OpSetGlobal;
-            constant = self.identifier_constant(scanner, chunk, vm);
+            constant = self.identifier_constant(chunk, vm);
         }
-        if can_assign && self.match_token_type(TokenType::Equal, scanner) {
-            self.expression(scanner, chunk, vm);
+        if can_assign && self.match_token_type(TokenType::Equal) {
+            self.expression(chunk, vm);
             self.emit_bytes(set_op as u8, constant, chunk);
         } else {
             self.emit_bytes(get_op as u8, constant, chunk);
         }
     }
-}
-
-fn token_equals(a: Token, b: Token, scanner: &Scanner) -> bool {
-    a.length == b.length && scanner.get_lexeme(a) == scanner.get_lexeme(b)
 }

@@ -10,6 +10,7 @@ mod rules;
 pub struct Compiler {
     current_token: Token,
     previous_token: Token,
+    scanner: Scanner,
     had_error: bool,
     panic_mode: bool,
     locals: Vec<Local>,
@@ -21,7 +22,7 @@ pub struct Local {
     is_initialized: bool,
 }
 impl Compiler {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(scanner: Scanner) -> Self {
         Compiler {
             current_token: Token::default(),
             previous_token: Token::default(),
@@ -29,6 +30,7 @@ impl Compiler {
             panic_mode: false,
             locals: vec![],
             scope_depth: 0,
+            scanner,
         }
     }
     fn emit_byte(&self, byte: u8, chunk: &mut Chunk) {
@@ -49,10 +51,10 @@ impl Compiler {
     fn end(&self, chunk: &mut Chunk) {
         self.emit_return(chunk);
     }
-    pub fn compile(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) -> bool {
-        self.advance(scanner);
-        while !self.match_token_type(TokenType::EOF, scanner) {
-            self.declaration(scanner, chunk, vm);
+    pub fn compile(&mut self, chunk: &mut Chunk, vm: &mut Vm) -> bool {
+        self.advance();
+        while !self.match_token_type(TokenType::EOF) {
+            self.declaration(chunk, vm);
         }
         self.end(chunk);
         !self.had_error
