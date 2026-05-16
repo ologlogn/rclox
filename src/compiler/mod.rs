@@ -18,6 +18,7 @@ pub struct Compiler {
 pub struct Local {
     token: Token,
     depth: usize,
+    is_initialized: bool,
 }
 impl Compiler {
     pub(crate) fn new() -> Self {

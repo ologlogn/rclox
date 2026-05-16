@@ -22,6 +22,7 @@ pub enum OpCode {
     OpSetGlobal,
     OpGetLocal,
     OpSetLocal,
+    OpPopN,
 }
 impl TryFrom<u8> for OpCode {
     type Error = String;
@@ -49,6 +50,7 @@ impl TryFrom<u8> for OpCode {
             18 => Ok(OpCode::OpSetGlobal),
             19 => Ok(OpCode::OpGetLocal),
             20 => Ok(OpCode::OpSetLocal),
+            21 => Ok(OpCode::OpPopN),
             _ => Err(format!("Unknown opcode: {}", byte)),
         }
     }
@@ -126,6 +128,7 @@ impl fmt::Debug for Chunk {
                 OpCode::OpSetGlobal => self.debug_constant_instruction(f, "OP_SET_GLOBAL", offset)?,
                 OpCode::OpGetLocal => self.debug_byte_instruction(f, "OP_GET_LOCAL", offset)?,
                 OpCode::OpSetLocal => self.debug_byte_instruction(f, "OP_SET_LOCAL", offset)?,
+                OpCode::OpPopN => self.debug_constant_instruction(f, "OP_POP_N", offset)?,
             };
         }
         Ok(())

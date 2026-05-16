@@ -1,0 +1,88 @@
+{
+    var a = 10;
+    var b = 20;
+    var c = 30;
+
+    print a + b * c;          // 10 + 20*30 = 610
+
+    {
+        var a = 100;
+        var d = 40;
+
+        print a;              // 100 (inner a)
+        print d;              // 40
+        print b;              // 20 (outer b)
+
+        a = a + 1;
+        d = d + 1;
+
+        print a;              // 101
+        print d;              // 41
+    }
+
+    {
+        var b = 200;
+        var e = 50;
+
+        print b;              // 200 (inner b)
+        print e;              // 50
+        print a;              // 10  (outer a)
+
+        b = b + 10;
+        e = e + 10;
+
+        print b;              // 210
+        print e;              // 60
+
+        {
+            var b = 2000;
+
+            print b;          // 2000 (innermost b)
+
+            b = b + 100;
+
+            print b;          // 2100
+        }
+
+        print b;              // 210 (still previous b, not 2100)
+        print e;              // 60
+    }
+
+    print a;                  // 10
+    print b;                  // 210 (modified in inner scope)
+    print c;                  // 30
+
+    a = a * 2;
+    b = b * 2;
+    c = c * 2;
+
+    print a;                  // 20
+    print b;                  // 420
+    print c;                  // 60
+}
+
+
+{
+    var x = 1;
+    {
+        var x = 2;
+        {
+            var x = 3;
+
+            print x;          // 3
+            x = x + 1;
+
+            print x;          // 4
+        }
+
+        print x;              // 2
+        x = x + 10;
+
+        print x;              // 12
+    }
+
+    print x;                  // 1
+    x = x + 100;
+
+    print x;                  // 101
+}

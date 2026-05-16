@@ -76,6 +76,7 @@ impl Compiler {
         let local = Local {
             token,
             depth: self.scope_depth,
+            is_initialized: false,
         };
         self.locals.push(local);
     }
@@ -96,6 +97,7 @@ impl Compiler {
         }
         self.consume(TokenType::Semicolon, "Expected Semicolon after declaration.", scanner);
         if self.scope_depth > 0 {
+            self.locals.last_mut().unwrap().is_initialized = true;
             return;
         }
         self.emit_bytes(OpCode::OpDefineGlobal as u8, constant, chunk);
@@ -138,12 +140,17 @@ impl Compiler {
     }
     fn end_scope(&mut self, chunk: &mut Chunk) {
         self.scope_depth -= 1;
+        let mut to_pop = 0;
         while let Some(local) = self.locals.last() {
             if local.depth <= self.scope_depth {
                 break;
             }
             self.locals.pop();
-            self.emit_byte(OpCode::OpPop as u8, chunk);
+            to_pop += 1;
+        }
+        if to_pop > 0 {
+            let c = chunk.write_constant(Value::Number(to_pop as f64));
+            self.emit_bytes(OpCode::OpPopN as u8, c, chunk);
         }
     }
     fn block_statement(&mut self, scanner: &mut Scanner, chunk: &mut Chunk, vm: &mut Vm) {
@@ -179,11 +186,19 @@ impl Compiler {
 
     fn resolve_local(&mut self, scanner: &Scanner) -> (bool, u8) {
         let token = self.previous_token;
+        let mut found_uninitialized = false;
         for i in (0..self.locals.len()).rev() {
             let local = &self.locals[i];
             if token_equals(local.token, token, scanner) {
+                if !local.is_initialized {
+                    found_uninitialized = true;
+                    continue;
+                }
                 return (true, i as u8);
             }
+        }
+        if found_uninitialized {
+            self.error_at(token, "Can't read local variable in its own init", scanner);
         }
         (false, 0)
     }

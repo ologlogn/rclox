@@ -1,0 +1,33 @@
+{
+    var greeting = "hello";
+    var name = "world";
+    
+    print greeting;        // hello
+    print name;            // world
+    
+    {
+        var greeting = "hi";
+        print greeting;    // hi
+        print name;        // world (outer)
+    }
+    
+    print greeting;        // hello (outer, untouched)
+    
+    {
+        var suffix = "!";
+        name = "lox";
+        print name;        // lox
+        print suffix;      // !
+        
+        {
+            var name = "inner";
+            print name;    // inner
+            print suffix;  // ! (outer suffix)
+        }
+        
+        print name;        // lox (outer name, untouched by inner var)
+    }
+    
+    print greeting;        // hello
+    print name;            // lox (was modified by name = "lox")
+}

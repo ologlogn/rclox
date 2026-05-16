@@ -1,0 +1,57 @@
+{
+    var sum = 0;
+    var mul = 1;
+
+    {
+        var i = 10;
+        var j = 20;
+        sum = sum + i + j;    // sum = 30
+        mul = mul * i;        // mul = 10
+        print sum;            // 30
+        print mul;            // 10
+
+        {
+            var j = 5;
+            var k = 3;
+            sum = sum + j + k; // sum = 38
+            mul = mul * k;     // mul = 30
+            print sum;         // 38
+            print mul;         // 30
+            print j;           // 5  (inner j)
+        }
+
+        print j;               // 20 (outer j, untouched)
+        print sum;             // 38
+        print mul;             // 30
+    }
+
+    {
+        var sum = 100;         // shadows outer sum
+        var factor = 4;
+        sum = sum * factor;    // inner sum = 400
+        mul = mul + sum;       // outer mul = 30 + 400 = 430
+        print sum;             // 400
+        print mul;             // 430
+    }
+
+    print sum;                 // 38  (outer sum, untouched by inner var sum)
+    print mul;                 // 430
+
+    {
+        var a = mul * 2;       // a = 860
+        var b = sum + a;       // b = 898
+        print a;               // 860
+        print b;               // 898
+        {
+            var a = b - a;     // inner a = 898 - 860 = 38
+            print a;           // 38
+            a = a * 2;
+            print a;           // 76
+        }
+        print a;               // 860 (outer a untouched)
+        print b;               // 898
+    }
+
+    print sum;                 // 38
+    print mul;                 // 430
+}

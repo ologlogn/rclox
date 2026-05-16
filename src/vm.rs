@@ -91,6 +91,12 @@ impl Vm {
                 OpCode::OpPop => {
                     self.stack.pop();
                 }
+                OpCode::OpPopN => {
+                    let value = self.read_constant(chunk);
+                    if let Value::Number(to_pop) = value {
+                        self.stack.truncate(self.stack.len() - to_pop as usize);
+                    }
+                }
                 OpCode::OpDefineGlobal => {
                     let name = self.read_string(chunk);
                     self.globals.insert(name, self.stack.pop().unwrap());
