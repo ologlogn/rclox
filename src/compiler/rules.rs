@@ -71,6 +71,8 @@ pub fn get_rule(token_type: TokenType) -> ParseRule {
         TokenType::String => ParseRule::new(Some(Compiler::string), None, Precedence::None),
         TokenType::Identifier => ParseRule::new(Some(Compiler::variable), None, Precedence::None),
         TokenType::Nil | TokenType::False | TokenType::True => ParseRule::new(Some(Compiler::literal), None, Precedence::None),
+        TokenType::And => ParseRule::new(None, Some(Compiler::and_), Precedence::And),
+        TokenType::Or => ParseRule::new(None, Some(Compiler::or_), Precedence::Or),
         _ => ParseRule::new(None, None, Precedence::None),
     }
 }

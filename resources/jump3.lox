@@ -1,0 +1,17 @@
+print "--- Testing AND ---";
+print false and "should not print";  // Expect: false
+print true and "second";             // Expect: second
+print nil and "should not print";    // Expect: nil
+
+print "--- Testing OR ---";
+print true or "should not print";    // Expect: true
+print false or "second";             // Expect: second
+print "first" or "should not print"; // Expect: first
+
+print "--- Testing Short-Circuit Side Effects ---";
+var a = "before";
+false and (a = "after");
+print a; // Expect: before (because 'and' short-circuited)
+
+true or (a = "after");
+print a; // Expect: before (because 'or' short-circuited)

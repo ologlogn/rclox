@@ -352,4 +352,19 @@ impl Compiler {
             _ => unreachable!("Unknown literal"),
         }
     }
+
+    pub(super) fn and_(&mut self, _can_assign: bool, chunk: &mut Chunk) {
+        let end_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
+        self.emit_byte(OpCode::OpPop as u8, chunk);
+        self.parse_precedence(Precedence::And, chunk);
+        self.patch_jump(chunk, end_jump);
+    }
+    pub(super) fn or_(&mut self, _can_assign: bool, chunk: &mut Chunk) {
+        let else_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
+        let end_jump = self.emit_jump(chunk, OpCode::OpJump);
+        self.patch_jump(chunk, else_jump);
+        self.emit_byte(OpCode::OpPop as u8, chunk);
+        self.parse_precedence(Precedence::Or, chunk);
+        self.patch_jump(chunk, end_jump);
+    }
 }
