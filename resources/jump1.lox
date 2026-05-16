@@ -1,0 +1,41 @@
+// --- Test 1: Simple truthy condition (no jump) ---
+print "--- Test 1 ---";
+print "testing true condition";
+if (true) {
+    print "inside if block";
+}
+print "after if block";
+
+// --- Test 2: Simple falsey condition (jump over block) ---
+print "--- Test 2 ---";
+print "testing false condition";
+if (false) {
+    print "this should NOT print";
+}
+print "after false condition";
+
+// --- Test 3: Variable-based conditions ---
+print "--- Test 3 ---";
+var a = 10;
+var b = 5;
+
+if (a > b) {
+    print "math works";
+}
+
+if (a < b) {
+    print "this is broken";
+}
+
+// --- Test 4: Nested if statements (testing offset calculations) ---
+print "--- Test 4 ---";
+var outer = true;
+var inner = false;
+
+if (outer) {
+    print "entered outer";
+    if (inner) {
+        print "entered inner - FAIL";
+    }
+    print "exited inner";
+}

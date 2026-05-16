@@ -27,6 +27,8 @@ pub enum OpCode {
     OpGetLocal,
     OpSetLocal,
     OpPopN,
+    OpJumpIfFalse,
+    OpJump,
 }
 
 impl TryFrom<u8> for OpCode {
@@ -56,6 +58,8 @@ impl TryFrom<u8> for OpCode {
             19 => Ok(OpCode::OpGetLocal),
             20 => Ok(OpCode::OpSetLocal),
             21 => Ok(OpCode::OpPopN),
+            22 => Ok(OpCode::OpJumpIfFalse),
+            23 => Ok(OpCode::OpJump),
             _ => Err(format!("Unknown opcode: {}", byte)),
         }
     }
@@ -76,6 +80,14 @@ impl Chunk {
             constants: vec![],
             lines: vec![],
         }
+    }
+
+    pub fn count(&self) -> usize {
+        self.code.len()
+    }
+
+    pub fn write_byte_at(&mut self, offset: usize, byte: u8) {
+        self.code[offset] = byte;
     }
 
     // ── Writing ──────────────────────────────────────────────────────────────
@@ -130,6 +142,8 @@ impl Chunk {
             OpCode::OpGetLocal => self.byte_instruction(f, "OP_GET_LOCAL", offset),
             OpCode::OpSetLocal => self.byte_instruction(f, "OP_SET_LOCAL", offset),
             OpCode::OpPopN => self.constant_instruction(f, "OP_POP_N", offset),
+            OpCode::OpJumpIfFalse => self.jump_instruction(f, "OP_JUMP_IF_FALSE", 1, offset),
+            OpCode::OpJump => self.jump_instruction(f, "OP_JUMP", 1, offset),
         }
     }
 
@@ -146,9 +160,15 @@ impl Chunk {
     }
 
     fn byte_instruction(&self, f: &mut fmt::Formatter<'_>, name: &str, offset: usize) -> Result<usize, fmt::Error> {
-        let slot = self.code[offset + 1] as usize;
+        let slot = self.code[offset + 1];
         writeln!(f, "{:<16} {:4}", name, slot)?;
         Ok(offset + 2)
+    }
+    fn jump_instruction(&self, f: &mut fmt::Formatter<'_>, name: &str, sign: isize, offset: usize) -> Result<usize, fmt::Error> {
+        let jump = ((self.code[offset + 1] as u16) << 8) | (self.code[offset + 2] as u16);
+        let target = ((offset + 3) as isize + (sign * jump as isize)) as usize;
+        writeln!(f, "{:<16} {:4} -> {}", name, offset, target)?;
+        Ok(offset + 3)
     }
 }
 

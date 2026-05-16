@@ -1,0 +1,46 @@
+// Setup variables for testing
+var a = 1;
+var b = 2;
+var c = 3;
+
+// 1. Basic if-else with block syntax
+if (a < b) {
+    print "1: a is less than b";
+} else {
+    print "1: FAIL";
+}
+
+// 2. If without an else
+if (c == 3) {
+    print "2: c is 3";
+}
+
+// 3. False condition (triggers the else block)
+if (a > b) {
+    print "3: FAIL";
+} else {
+    print "3: a is not greater than b";
+}
+
+// 4. Single-statement (no braces) if-else
+if (a == 1) print "4: a is 1"; else print "4: FAIL";
+
+// 5. THE DANGLING ELSE PROBLEM
+// The 'else' must bind to the nearest 'if' (the inner one). 
+// If your parser is built correctly, it should print the else branch.
+if (a == 1)
+    if (b == 100)
+        print "5: FAIL (inner if)";
+    else
+        print "5: The else bound correctly to the inner if!";
+
+
+// 6. Nested if-else where the outer condition is false
+// The inner if/else should be entirely skipped.
+if (a == 100)
+    if (b == 2)
+        print "6: FAIL (inner if)";
+    else
+        print "6: FAIL (inner else)";
+else
+    print "6: Outer else executed correctly!";

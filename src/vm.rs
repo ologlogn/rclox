@@ -45,6 +45,13 @@ impl Vm {
         byte
     }
 
+    fn read_short(&mut self, chunk: &Chunk) -> u16 {
+        let high = chunk.read_byte(self.ip) as u16;
+        let low = chunk.read_byte(self.ip + 1) as u16;
+        self.ip += 2;
+        (high << 8) | low
+    }
+
     fn read_constant(&mut self, chunk: &Chunk) -> Value {
         let index = self.read_byte(chunk);
         chunk.read_constant(index as usize)
@@ -128,6 +135,16 @@ impl Vm {
             match opcode {
                 // ── Control flow ─────────────────────────────────────────────
                 OpCode::OpReturn => return Ok(()),
+                OpCode::OpJumpIfFalse => {
+                    let offset = self.read_short(chunk);
+                    if self.peek_top().is_falsey() {
+                        self.ip += offset as usize;
+                    }
+                }
+                OpCode::OpJump => {
+                    let offset = self.read_short(chunk);
+                    self.ip += offset as usize;
+                }
 
                 // ── Constants ────────────────────────────────────────────────
                 OpCode::OpConstant => {

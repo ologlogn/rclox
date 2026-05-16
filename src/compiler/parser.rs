@@ -196,6 +196,8 @@ impl Compiler {
     fn statement(&mut self, chunk: &mut Chunk) {
         if self.match_token_type(TokenType::Print) {
             self.print_statement(chunk);
+        } else if self.match_token_type(TokenType::If) {
+            self.if_statement(chunk);
         } else if self.match_token_type(TokenType::LeftBrace) {
             self.begin_scope();
             self.block(chunk);
@@ -203,6 +205,32 @@ impl Compiler {
         } else {
             self.expression_statement(chunk);
         }
+    }
+
+    fn emit_jump(&mut self, chunk: &mut Chunk, op_code: OpCode) -> usize {
+        self.emit_byte(op_code as u8, chunk);
+        self.emit_bytes(0xff, 0xff, chunk);
+        chunk.count() - 2
+    }
+    fn patch_jump(&mut self, chunk: &mut Chunk, offset: usize) {
+        let jump = (chunk.count() - offset - 2) as u16;
+        chunk.write_byte_at(offset, (jump >> 8) as u8);
+        chunk.write_byte_at(offset + 1, (jump & 0xff) as u8);
+    }
+    fn if_statement(&mut self, chunk: &mut Chunk) {
+        self.consume(TokenType::LeftParen, "Expected '(' after 'if'.");
+        self.expression(chunk);
+        self.consume(TokenType::RightParen, "Expected ')' after condition.");
+        let then_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
+        self.emit_byte(OpCode::OpPop as u8, chunk);
+        self.statement(chunk);
+        let else_jump = self.emit_jump(chunk, OpCode::OpJump);
+        self.patch_jump(chunk, then_jump);
+        self.emit_byte(OpCode::OpPop as u8, chunk);
+        if self.match_token_type(TokenType::Else) {
+            self.statement(chunk);
+        }
+        self.patch_jump(chunk, else_jump);
     }
 
     fn block(&mut self, chunk: &mut Chunk) {
