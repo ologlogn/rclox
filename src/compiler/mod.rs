@@ -76,4 +76,24 @@ impl Compiler {
     fn end_compiler(&self, chunk: &mut Chunk) {
         self.emit_return(chunk);
     }
+    fn emit_loop(&mut self, chunk: &mut Chunk, loop_start: usize) {
+        self.emit_byte(OpCode::OpLoop as u8, chunk);
+        let offset = (chunk.count() - loop_start + 2) as u16;
+        self.emit_bytes((offset >> 8 & 0xff) as u8, (offset & 0xff) as u8, chunk);
+    }
+
+    fn emit_jump(&mut self, chunk: &mut Chunk, op_code: OpCode) -> usize {
+        self.emit_byte(op_code as u8, chunk);
+        self.emit_bytes(0xff, 0xff, chunk);
+        chunk.count() - 2
+    }
+    fn patch_jump(&mut self, chunk: &mut Chunk, offset: usize) {
+        let jump = (chunk.count() - offset - 2) as u16;
+        chunk.write_byte_at(offset, (jump >> 8) as u8);
+        chunk.write_byte_at(offset + 1, (jump & 0xff) as u8);
+    }
+
+    fn emit_pop(&mut self, chunk: &mut Chunk) {
+        self.emit_byte(OpCode::OpPop as u8, chunk);
+    }
 }

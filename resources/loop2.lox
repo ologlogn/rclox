@@ -1,0 +1,304 @@
+print "==============================";
+print "MEGA VM CONTROL FLOW TEST";
+print "==============================";
+
+//
+// 1. BASIC FOR LOOP
+//
+
+print "--- BASIC FOR ---";
+
+for (var i = 0; i < 5; i = i + 1) {
+    print i;
+}
+
+//
+// 2. NESTED FOR LOOPS
+//
+
+print "--- NESTED FOR ---";
+
+for (var outer = 1; outer <= 3; outer = outer + 1) {
+    for (var inner = 1; inner <= 4; inner = inner + 1) {
+        print outer * 100 + inner;
+    }
+}
+
+//
+// 3. ZERO ITERATION
+//
+
+print "--- ZERO ITERATION ---";
+
+for (var i = 10; i < 0; i = i + 1) {
+    print "FAIL";
+}
+
+print "ZERO LOOP OK";
+
+//
+// 4. SHORT CIRCUIT OR
+//
+
+print "--- SHORT CIRCUIT OR ---";
+
+var a = 0;
+
+while (a < 10) {
+    if (a == 2 or a == 5 or a == 8) {
+        print "skip";
+    } else {
+        print a;
+    }
+
+    a = a + 1;
+}
+
+//
+// 5. SHORT CIRCUIT AND
+//
+
+print "--- SHORT CIRCUIT AND ---";
+
+var b = 0;
+
+while (b < 10 and b >= 0) {
+    print b;
+    b = b + 1;
+}
+
+//
+// 6. VARIABLE SHADOWING
+//
+
+print "--- SHADOWING ---";
+
+var x = 100;
+
+{
+    var x = 200;
+    print x;
+
+    {
+        var x = 300;
+        print x;
+    }
+
+    print x;
+}
+
+print x;
+
+//
+// 7. COMPLEX BOOLEAN LOGIC
+//
+
+print "--- BOOLEAN LOGIC ---";
+
+for (var i = 0; i < 20; i = i + 1) {
+    if ((i < 5 or i > 15) and !(i == 2 or i == 18)) {
+        print i;
+    }
+}
+
+//
+// 8. FIBONACCI
+//
+
+print "--- FIBONACCI ---";
+
+var f0 = 0;
+var f1 = 1;
+
+for (var n = 0; n < 15; n = n + 1) {
+    print f0;
+
+    var temp = f0;
+    f0 = f1;
+    f1 = temp + f1;
+}
+
+//
+// 9. TRIANGULAR NUMBERS
+//
+
+print "--- TRIANGULAR ---";
+
+for (var n = 1; n <= 10; n = n + 1) {
+    var sum = 0;
+
+    for (var i = 1; i <= n; i = i + 1) {
+        sum = sum + i;
+    }
+
+    print sum;
+}
+
+//
+// 10. DEEP NESTED SCOPES
+//
+
+print "--- DEEP SCOPES ---";
+
+{
+    var a = 1;
+
+    {
+        var b = 2;
+
+        {
+            var c = 3;
+
+            {
+                var d = 4;
+
+                print a + b + c + d;
+            }
+        }
+    }
+}
+
+//
+// 11. MANY LOCALS
+//
+
+print "--- MANY LOCALS ---";
+
+{
+    var a = 1;
+    var b = 2;
+    var c = 3;
+    var d = 4;
+    var e = 5;
+    var f = 6;
+    var g = 7;
+    var h = 8;
+    var i = 9;
+    var j = 10;
+
+    print a+b+c+d+e+f+g+h+i+j;
+}
+
+//
+// 12. LOOP INSIDE BLOCK INSIDE LOOP
+//
+
+print "--- BLOCK LOOP BLOCK ---";
+
+for (var i = 0; i < 3; i = i + 1) {
+    {
+        var x = i * 10;
+
+        while (x < i * 10 + 3) {
+            print x;
+            x = x + 1;
+        }
+    }
+}
+
+//
+// 13. STACK STRESS
+//
+
+print "--- STACK STRESS ---";
+
+var counter = 0;
+
+while (counter < 50) {
+
+    //
+    // huge boolean expression
+    //
+
+    if (
+        (true and true and true)
+        and
+        (false or true)
+        and
+        !(false and true)
+        and
+        ((1 < 2) and (2 < 3))
+    ) {
+        //
+        // intentionally empty
+        //
+    }
+
+    counter = counter + 1;
+}
+
+print "STACK STRESS OK";
+
+//
+// 14. ACCUMULATOR
+//
+
+print "--- ACCUMULATOR ---";
+
+var total = 0;
+
+for (var i = 1; i <= 100; i = i + 1) {
+    total = total + i;
+}
+
+print total;
+
+//
+// 15. PRIME DETECTOR
+//
+
+print "--- PRIMES ---";
+
+for (var n = 2; n <= 30; n = n + 1) {
+
+    var isPrime = true;
+
+    for (var d = 2; d < n; d = d + 1) {
+        if (n - (n / d) * d == 0) {
+            isPrime = false;
+        }
+    }
+
+    if (isPrime) {
+        print n;
+    }
+}
+
+//
+// 16. EMPTY FOR
+//
+
+print "--- EMPTY FOR ---";
+
+var z = 0;
+
+for (;z>=0;) {
+    print z;
+
+    z = z + 1;
+
+    if (z == 3) {
+        print "breaking simulation";
+        z = 999;
+    }
+
+    if (z > 100) {
+        //
+        // fake break by condition fail
+        //
+        z = -1;
+    }
+
+    if (z < 0) {
+        //
+        // force loop termination externally
+        //
+    } 
+}
+
+//
+// 17. FINAL STACK CHECK
+//
+
+print "--- FINAL CHECK ---";
+print "IF YOU SEE THIS, STACK PROBABLY OK";

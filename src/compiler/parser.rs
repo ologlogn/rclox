@@ -196,9 +196,11 @@ impl Compiler {
     fn statement(&mut self, chunk: &mut Chunk) {
         if self.match_token_type(TokenType::Print) {
             self.print_statement(chunk);
+        } else if self.match_token_type(TokenType::For) {
+            self.for_statement(chunk);
         } else if self.match_token_type(TokenType::If) {
             self.if_statement(chunk);
-        }  else if self.match_token_type(TokenType::While) {
+        } else if self.match_token_type(TokenType::While) {
             self.while_statement(chunk)
         } else if self.match_token_type(TokenType::LeftBrace) {
             self.begin_scope();
@@ -208,44 +210,66 @@ impl Compiler {
             self.expression_statement(chunk);
         }
     }
+    fn for_statement(&mut self, chunk: &mut Chunk) {
+        self.begin_scope();
+        self.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
+        if self.match_token_type(TokenType::Semicolon) {
+        } else if self.match_token_type(TokenType::Var) {
+            self.var_declaration(chunk);
+        } else {
+            self.expression_statement(chunk);
+        }
+        let mut loop_start = chunk.count();
+        let mut is_conditional = false;
+        let mut exit_jump = 0;
+        if !self.match_token_type(TokenType::Semicolon) {
+            is_conditional = true;
+            self.expression(chunk);
+            self.consume(TokenType::Semicolon, "Expected ';' after the loop condition.");
+            exit_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
+            self.emit_pop(chunk);
+        }
+        if !self.match_token_type(TokenType::RightParen) {
+            let body_jump = self.emit_jump(chunk, OpCode::OpJump);
+            let increment_start = chunk.count();
+            self.expression(chunk);
+            self.emit_pop(chunk);
+            self.consume(TokenType::RightParen, "Expected ')' after clauses.");
+            self.emit_loop(chunk, loop_start);
+            loop_start = increment_start;
+            self.patch_jump(chunk, body_jump);
+        }
+        self.statement(chunk);
+        self.emit_loop(chunk, loop_start);
+        if is_conditional {
+            self.patch_jump(chunk, exit_jump);
+            self.emit_pop(chunk);
+        }
+        self.end_scope(chunk);
+    }
     fn while_statement(&mut self, chunk: &mut Chunk) {
         let loop_start = chunk.count();
         self.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
         self.expression(chunk);
         self.consume(TokenType::RightParen, "Expected ')' after condition.");
         let exit_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
-        self.emit_byte(OpCode::OpPop as u8, chunk);
+        self.emit_pop(chunk);
         self.statement(chunk);
         self.emit_loop(chunk, loop_start);
         self.patch_jump(chunk, exit_jump);
-        self.emit_byte(OpCode::OpPop as u8, chunk);
-    }
-    fn emit_loop(&mut self, chunk: &mut Chunk, loop_start: usize) {
-        self.emit_byte(OpCode::OpLoop as u8, chunk);
-        let offset = (chunk.count() - loop_start + 2) as u16;
-        self.emit_bytes((offset>>8 & 0xff) as u8 , (offset & 0xff) as u8, chunk);
+        self.emit_pop(chunk);
     }
 
-    fn emit_jump(&mut self, chunk: &mut Chunk, op_code: OpCode) -> usize {
-        self.emit_byte(op_code as u8, chunk);
-        self.emit_bytes(0xff, 0xff, chunk);
-        chunk.count() - 2
-    }
-    fn patch_jump(&mut self, chunk: &mut Chunk, offset: usize) {
-        let jump = (chunk.count() - offset - 2) as u16;
-        chunk.write_byte_at(offset, (jump >> 8) as u8);
-        chunk.write_byte_at(offset + 1, (jump & 0xff) as u8);
-    }
     fn if_statement(&mut self, chunk: &mut Chunk) {
         self.consume(TokenType::LeftParen, "Expected '(' after 'if'.");
         self.expression(chunk);
         self.consume(TokenType::RightParen, "Expected ')' after condition.");
         let then_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
-        self.emit_byte(OpCode::OpPop as u8, chunk);
+        self.emit_pop(chunk);
         self.statement(chunk);
         let else_jump = self.emit_jump(chunk, OpCode::OpJump);
         self.patch_jump(chunk, then_jump);
-        self.emit_byte(OpCode::OpPop as u8, chunk);
+        self.emit_pop(chunk);
         if self.match_token_type(TokenType::Else) {
             self.statement(chunk);
         }
@@ -268,7 +292,7 @@ impl Compiler {
     fn expression_statement(&mut self, chunk: &mut Chunk) {
         self.expression(chunk);
         self.consume(TokenType::Semicolon, "Expected ';' after expression.");
-        self.emit_byte(OpCode::OpPop as u8, chunk);
+        self.emit_pop(chunk);
     }
 
     // ── Pratt parser ─────────────────────────────────────────────────────────
@@ -374,7 +398,7 @@ impl Compiler {
 
     pub(super) fn and_(&mut self, _can_assign: bool, chunk: &mut Chunk) {
         let end_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
-        self.emit_byte(OpCode::OpPop as u8, chunk);
+        self.emit_pop(chunk);
         self.parse_precedence(Precedence::And, chunk);
         self.patch_jump(chunk, end_jump);
     }
@@ -382,7 +406,7 @@ impl Compiler {
         let else_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
         let end_jump = self.emit_jump(chunk, OpCode::OpJump);
         self.patch_jump(chunk, else_jump);
-        self.emit_byte(OpCode::OpPop as u8, chunk);
+        self.emit_pop(chunk);
         self.parse_precedence(Precedence::Or, chunk);
         self.patch_jump(chunk, end_jump);
     }
