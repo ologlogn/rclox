@@ -145,7 +145,10 @@ impl Vm {
                     let offset = self.read_short(chunk);
                     self.ip += offset as usize;
                 }
-
+                OpCode::OpLoop => {
+                    let offset = self.read_short(chunk);
+                    self.ip -= offset as usize;
+                }
                 // ── Constants ────────────────────────────────────────────────
                 OpCode::OpConstant => {
                     let value = self.read_constant(chunk);

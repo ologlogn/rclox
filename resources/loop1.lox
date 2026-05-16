@@ -1,0 +1,63 @@
+print "=== 1. Basic Counting ===";
+var i = 0;
+while (i < 3) {
+    print i;
+    i = i + 1;
+}
+
+print "=== 2. Zero-Iteration Jump ===";
+while (false and true) {
+    print "FAIL: This should never print!";
+}
+print "Skipped successfully.";
+
+print "=== 3. Nested Loops (Testing complex offsets) ===";
+// This ensures that jumping backward inside another backward jump works.
+var outer = 1;
+while (outer <= 3) {
+    var inner = 1;
+    while (inner <= 2) {
+        // Should print 11, 12, 21, 22, 31, 32
+        print outer * 10 + inner; 
+        inner = inner + 1;
+    }
+    outer = outer + 1;
+}
+
+print "=== 4. While with If-Else & Logic ===";
+// Tests whether POPs from if-statements corrupt the loop's stack frame
+var num = 0;
+var skips = 0;
+while (num < 10 and skips < 2) {
+    if (num == 3 or num == 7) {
+        print "Skipping...";
+        skips = skips + 1;
+    } else {
+        print num;
+    }
+    num = num + 1;
+}
+
+print "=== 5. Algorithm Test: Fibonacci ===";
+// Calculates the first 10 numbers of the Fibonacci sequence
+var a = 0;
+var b = 1;
+var n = 0;
+while (n < 10) {
+    print a;
+    var temp = a;
+    a = b;
+    b = temp + b;
+    n = n + 1;
+}
+
+print "=== 6. Stack Leak Test ===";
+// If your compiler is missing an OP_POP somewhere, this loop will eventually 
+// overflow the VM's stack (or at least crash it) because values will pile up.
+var counter = 0;
+while (counter < 3) {
+    // A complex expression that evaluates to true, but pushes a lot to the stack
+    true and (false or (10 > 5)); 
+    counter = counter + 1;
+}
+print "Stack maintained correctly!";

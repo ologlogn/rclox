@@ -198,6 +198,8 @@ impl Compiler {
             self.print_statement(chunk);
         } else if self.match_token_type(TokenType::If) {
             self.if_statement(chunk);
+        }  else if self.match_token_type(TokenType::While) {
+            self.while_statement(chunk)
         } else if self.match_token_type(TokenType::LeftBrace) {
             self.begin_scope();
             self.block(chunk);
@@ -205,6 +207,23 @@ impl Compiler {
         } else {
             self.expression_statement(chunk);
         }
+    }
+    fn while_statement(&mut self, chunk: &mut Chunk) {
+        let loop_start = chunk.count();
+        self.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
+        self.expression(chunk);
+        self.consume(TokenType::RightParen, "Expected ')' after condition.");
+        let exit_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
+        self.emit_byte(OpCode::OpPop as u8, chunk);
+        self.statement(chunk);
+        self.emit_loop(chunk, loop_start);
+        self.patch_jump(chunk, exit_jump);
+        self.emit_byte(OpCode::OpPop as u8, chunk);
+    }
+    fn emit_loop(&mut self, chunk: &mut Chunk, loop_start: usize) {
+        self.emit_byte(OpCode::OpLoop as u8, chunk);
+        let offset = (chunk.count() - loop_start + 2) as u16;
+        self.emit_bytes((offset>>8 & 0xff) as u8 , (offset & 0xff) as u8, chunk);
     }
 
     fn emit_jump(&mut self, chunk: &mut Chunk, op_code: OpCode) -> usize {
