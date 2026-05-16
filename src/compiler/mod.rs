@@ -15,6 +15,7 @@ pub struct Compiler {
     panic_mode: bool,
     locals: Vec<Local>,
     scope_depth: usize,
+    vm: *mut Vm,
 }
 pub struct Local {
     token: Token,
@@ -22,7 +23,7 @@ pub struct Local {
     is_initialized: bool,
 }
 impl Compiler {
-    pub(crate) fn new(scanner: Scanner) -> Self {
+    pub(crate) fn new(scanner: Scanner, vm: &mut Vm) -> Self {
         Compiler {
             current_token: Token::default(),
             previous_token: Token::default(),
@@ -31,6 +32,7 @@ impl Compiler {
             locals: vec![],
             scope_depth: 0,
             scanner,
+            vm,
         }
     }
     fn emit_byte(&self, byte: u8, chunk: &mut Chunk) {
@@ -51,10 +53,10 @@ impl Compiler {
     fn end(&self, chunk: &mut Chunk) {
         self.emit_return(chunk);
     }
-    pub fn compile(&mut self, chunk: &mut Chunk, vm: &mut Vm) -> bool {
+    pub fn compile(&mut self, chunk: &mut Chunk) -> bool {
         self.advance();
         while !self.match_token_type(TokenType::EOF) {
-            self.declaration(chunk, vm);
+            self.declaration(chunk);
         }
         self.end(chunk);
         !self.had_error

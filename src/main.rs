@@ -29,8 +29,8 @@ fn main() {
 pub fn interpret(source: String, vm: &mut Vm) -> InterpretResult {
     let mut chunk = Chunk::new();
     let scanner = Scanner::new(source);
-    let mut parser = Compiler::new(scanner);
-    if !parser.compile(&mut chunk, vm) {
+    let mut parser = Compiler::new(scanner, vm);
+    if !parser.compile(&mut chunk) {
         InterpretResult::InterpretCompileError
     } else {
         println!("{:?}", chunk);

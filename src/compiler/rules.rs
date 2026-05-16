@@ -1,7 +1,6 @@
 use super::Compiler;
 use crate::chunk::Chunk;
 use crate::token::TokenType;
-use crate::vm::Vm;
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum Precedence {
@@ -38,7 +37,7 @@ impl TryFrom<u8> for Precedence {
     }
 }
 
-pub type ParseFn = fn(&mut Compiler, bool, &mut Chunk, &mut Vm);
+pub type ParseFn = fn(&mut Compiler, bool, &mut Chunk);
 
 pub struct ParseRule {
     pub prefix: Option<ParseFn>,
