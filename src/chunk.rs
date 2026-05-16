@@ -1,4 +1,8 @@
 use crate::value::Value;
+use std::fmt;
+
+// ── OpCode ───────────────────────────────────────────────────────────────────
+
 #[repr(u8)]
 pub enum OpCode {
     OpReturn,
@@ -24,6 +28,7 @@ pub enum OpCode {
     OpSetLocal,
     OpPopN,
 }
+
 impl TryFrom<u8> for OpCode {
     type Error = String;
 
@@ -56,11 +61,14 @@ impl TryFrom<u8> for OpCode {
     }
 }
 
+// ── Chunk ────────────────────────────────────────────────────────────────────
+
 pub struct Chunk {
     code: Vec<u8>,
     constants: Vec<Value>,
     lines: Vec<usize>,
 }
+
 impl Chunk {
     pub fn new() -> Self {
         Chunk {
@@ -70,26 +78,81 @@ impl Chunk {
         }
     }
 
+    // ── Writing ──────────────────────────────────────────────────────────────
+
     pub fn write_byte(&mut self, byte: u8, line: usize) {
         self.code.push(byte);
         self.lines.push(line);
     }
+
     pub fn write_constant(&mut self, value: Value) -> u8 {
         self.constants.push(value);
         (self.constants.len() - 1) as u8
     }
 
+    // ── Reading ──────────────────────────────────────────────────────────────
+
     pub fn read_byte(&self, offset: usize) -> u8 {
         self.code[offset]
     }
+
     pub fn read_constant(&self, offset: usize) -> Value {
         self.constants[offset].clone()
     }
+
     pub fn get_line(&self, offset: usize) -> usize {
         self.lines[offset]
     }
+
+    // ── Disassembler ─────────────────────────────────────────────────────────
+
+    fn disassemble_instruction(&self, f: &mut fmt::Formatter<'_>, offset: usize) -> Result<usize, fmt::Error> {
+        match OpCode::try_from(self.code[offset]).unwrap() {
+            OpCode::OpReturn => self.simple_instruction(f, "OP_RETURN", offset),
+            OpCode::OpConstant => self.constant_instruction(f, "OP_CONSTANT", offset),
+            OpCode::OpNegate => self.simple_instruction(f, "OP_NEGATE", offset),
+            OpCode::OpAdd => self.simple_instruction(f, "OP_ADD", offset),
+            OpCode::OpSubtract => self.simple_instruction(f, "OP_SUBTRACT", offset),
+            OpCode::OpMultiply => self.simple_instruction(f, "OP_MULTIPLY", offset),
+            OpCode::OpDivide => self.simple_instruction(f, "OP_DIVIDE", offset),
+            OpCode::OpNil => self.simple_instruction(f, "OP_NIL", offset),
+            OpCode::OpTrue => self.simple_instruction(f, "OP_TRUE", offset),
+            OpCode::OpFalse => self.simple_instruction(f, "OP_FALSE", offset),
+            OpCode::OpNot => self.simple_instruction(f, "OP_NOT", offset),
+            OpCode::OpEqual => self.simple_instruction(f, "OP_EQUAL", offset),
+            OpCode::OpGreater => self.simple_instruction(f, "OP_GREATER", offset),
+            OpCode::OpLess => self.simple_instruction(f, "OP_LESS", offset),
+            OpCode::OpPrint => self.simple_instruction(f, "OP_PRINT", offset),
+            OpCode::OpPop => self.simple_instruction(f, "OP_POP", offset),
+            OpCode::OpDefineGlobal => self.constant_instruction(f, "OP_DEFINE_GLOBAL", offset),
+            OpCode::OpGetGlobal => self.constant_instruction(f, "OP_GET_GLOBAL", offset),
+            OpCode::OpSetGlobal => self.constant_instruction(f, "OP_SET_GLOBAL", offset),
+            OpCode::OpGetLocal => self.byte_instruction(f, "OP_GET_LOCAL", offset),
+            OpCode::OpSetLocal => self.byte_instruction(f, "OP_SET_LOCAL", offset),
+            OpCode::OpPopN => self.constant_instruction(f, "OP_POP_N", offset),
+        }
+    }
+
+    fn simple_instruction(&self, f: &mut fmt::Formatter<'_>, name: &str, offset: usize) -> Result<usize, fmt::Error> {
+        writeln!(f, "{}", name)?;
+        Ok(offset + 1)
+    }
+
+    fn constant_instruction(&self, f: &mut fmt::Formatter<'_>, name: &str, offset: usize) -> Result<usize, fmt::Error> {
+        let index = self.code[offset + 1] as usize;
+        let value = &self.constants[index];
+        writeln!(f, "{:<16} {:4} {:?}: {}", name, index, value, value)?;
+        Ok(offset + 2)
+    }
+
+    fn byte_instruction(&self, f: &mut fmt::Formatter<'_>, name: &str, offset: usize) -> Result<usize, fmt::Error> {
+        let slot = self.code[offset + 1] as usize;
+        writeln!(f, "{:<16} {:4}", name, slot)?;
+        Ok(offset + 2)
+    }
 }
-use std::fmt;
+
+// ── Debug (disassembler) ─────────────────────────────────────────────────────
 
 impl fmt::Debug for Chunk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -97,58 +160,13 @@ impl fmt::Debug for Chunk {
         let mut offset = 0;
         while offset < self.code.len() {
             write!(f, "{:04} ", offset)?;
-
             if offset > 0 && self.lines[offset] == self.lines[offset - 1] {
                 write!(f, "   | ")?;
             } else {
                 write!(f, "{:4} ", self.lines[offset])?;
             }
-
-            let instruction = self.code[offset];
-
-            offset = match OpCode::try_from(instruction).unwrap() {
-                OpCode::OpReturn => self.debug_simple_instruction(f, "OP_RETURN", offset)?,
-                OpCode::OpConstant => self.debug_constant_instruction(f, "OP_CONSTANT", offset)?,
-                OpCode::OpNegate => self.debug_simple_instruction(f, "OP_NEGATE", offset)?,
-                OpCode::OpAdd => self.debug_simple_instruction(f, "OP_ADD", offset)?,
-                OpCode::OpSubtract => self.debug_simple_instruction(f, "OP_SUBTRACT", offset)?,
-                OpCode::OpMultiply => self.debug_simple_instruction(f, "OP_MULTIPLY", offset)?,
-                OpCode::OpDivide => self.debug_simple_instruction(f, "OP_DIVIDE", offset)?,
-                OpCode::OpNil => self.debug_simple_instruction(f, "OP_NIL", offset)?,
-                OpCode::OpTrue => self.debug_simple_instruction(f, "OP_TRUE", offset)?,
-                OpCode::OpFalse => self.debug_simple_instruction(f, "OP_FALSE", offset)?,
-                OpCode::OpNot => self.debug_simple_instruction(f, "OP_NOT", offset)?,
-                OpCode::OpEqual => self.debug_simple_instruction(f, "OP_EQUAL", offset)?,
-                OpCode::OpGreater => self.debug_simple_instruction(f, "OP_GREATER", offset)?,
-                OpCode::OpLess => self.debug_simple_instruction(f, "OP_LESS", offset)?,
-                OpCode::OpPrint => self.debug_simple_instruction(f, "OP_PRINT", offset)?,
-                OpCode::OpPop => self.debug_simple_instruction(f, "OP_POP", offset)?,
-                OpCode::OpDefineGlobal => self.debug_constant_instruction(f, "OP_DEFINE_GLOBAL", offset)?,
-                OpCode::OpGetGlobal => self.debug_constant_instruction(f, "OP_GET_GLOBAL", offset)?,
-                OpCode::OpSetGlobal => self.debug_constant_instruction(f, "OP_SET_GLOBAL", offset)?,
-                OpCode::OpGetLocal => self.debug_byte_instruction(f, "OP_GET_LOCAL", offset)?,
-                OpCode::OpSetLocal => self.debug_byte_instruction(f, "OP_SET_LOCAL", offset)?,
-                OpCode::OpPopN => self.debug_constant_instruction(f, "OP_POP_N", offset)?,
-            };
+            offset = self.disassemble_instruction(f, offset)?;
         }
         Ok(())
-    }
-}
-impl Chunk {
-    fn debug_simple_instruction(&self, f: &mut fmt::Formatter<'_>, name: &str, offset: usize) -> Result<usize, fmt::Error> {
-        writeln!(f, "{}", name)?;
-        Ok(offset + 1)
-    }
-
-    fn debug_constant_instruction(&self, f: &mut fmt::Formatter<'_>, name: &str, offset: usize) -> Result<usize, fmt::Error> {
-        let constant_index = self.code[offset + 1] as usize;
-        let value = &self.constants[constant_index];
-        writeln!(f, "{:<16} {:4} {:?}: {}", name, constant_index, value, value)?;
-        Ok(offset + 2)
-    }
-    fn debug_byte_instruction(&self, f: &mut fmt::Formatter<'_>, name: &str, offset: usize) -> Result<usize, fmt::Error> {
-        let stack_slot = self.code[offset + 1] as usize;
-        writeln!(f, "{:<16} {:4}", name, stack_slot)?;
-        Ok(offset + 2)
     }
 }

@@ -5,6 +5,8 @@ use crate::token::{Token, TokenType};
 use crate::value::Value;
 
 impl Compiler {
+    // ── Error handling ──────────────────────────────────────────────────────
+
     pub(super) fn error_at(&mut self, token: Token, message: &str) {
         if self.panic_mode {
             return;
@@ -14,92 +16,12 @@ impl Compiler {
         match token.token_type {
             TokenType::EOF => eprint!(" at end"),
             TokenType::Error(_) => {}
-            _ => {
-                eprint!(" at '{}'", self.scanner.get_lexeme(token));
-            }
+            _ => eprint!(" at '{}'", self.scanner.get_lexeme(token)),
         }
         eprintln!(": {}", message);
         self.had_error = true;
     }
-    pub(super) fn advance(&mut self) {
-        self.previous_token = self.current_token;
-        loop {
-            self.current_token = self.scanner.next_token();
-            if let TokenType::Error(message) = self.current_token.token_type {
-                self.error_at(self.current_token, &message);
-            } else {
-                break;
-            }
-        }
-    }
-    pub(super) fn consume(&mut self, token_type: TokenType, message: &str) {
-        if self.current_token.token_type != token_type {
-            self.error_at(self.current_token, message)
-        } else {
-            self.advance();
-        }
-    }
-    pub(super) fn declaration(&mut self, chunk: &mut Chunk) {
-        if self.match_token_type(TokenType::Var) {
-            self.var_declaration(chunk);
-        } else {
-            self.statement(chunk);
-        }
-        if self.panic_mode {
-            self.synchronize();
-        }
-    }
-    fn identifier_constant(&mut self, chunk: &mut Chunk) -> u8 {
-        let name = self.scanner.get_lexeme(self.previous_token);
-        let var_name = unsafe { self.vm.as_mut().unwrap().allocate_string(name) };
-        chunk.write_constant(Value::Object(var_name))
-    }
-    fn declare_variable(&mut self) {
-        if self.scope_depth == 0 {
-            return;
-        }
-        let token = self.previous_token;
-        for local in self.locals.iter().rev() {
-            if local.depth < self.scope_depth {
-                break;
-            }
-            if self.token_equals(token, local.token) {
-                self.error_at(token, "Already a variable with this name");
-                return;
-            }
-        }
-        self.add_local(token);
-    }
-    fn add_local(&mut self, token: Token) {
-        let local = Local {
-            token,
-            depth: self.scope_depth,
-            is_initialized: false,
-        };
-        self.locals.push(local);
-    }
-    fn parse_variable(&mut self, chunk: &mut Chunk) -> u8 {
-        self.consume(TokenType::Identifier, "Expected Variable name");
-        self.declare_variable();
-        if self.scope_depth > 0 {
-            return 0; // a dummy value, not pushed to chunk
-        }
-        self.identifier_constant(chunk)
-    }
-    fn var_declaration(&mut self, chunk: &mut Chunk) {
-        let constant = self.parse_variable(chunk);
-        if self.match_token_type(TokenType::Equal) {
-            self.expression(chunk);
-        } else {
-            self.emit_byte(OpCode::OpNil as u8, chunk);
-        }
-        self.consume(TokenType::Semicolon, "Expected Semicolon after declaration.");
-        if self.scope_depth > 0 {
-            self.locals.last_mut().unwrap().is_initialized = true;
-            return;
-        }
-        self.emit_bytes(OpCode::OpDefineGlobal as u8, constant, chunk);
-    }
+
     fn synchronize(&mut self) {
         self.panic_mode = false;
         while self.current_token.token_type != TokenType::EOF {
@@ -114,49 +36,39 @@ impl Compiler {
                 | TokenType::Var
                 | TokenType::For
                 | TokenType::Print
-                | TokenType::Return => {
-                    return;
-                }
+                | TokenType::Return => return,
                 _ => {}
             }
-            self.advance()
+            self.advance();
         }
     }
-    fn statement(&mut self, chunk: &mut Chunk) {
-        if self.match_token_type(TokenType::Print) {
-            self.print_statement(chunk);
-        } else if self.match_token_type(TokenType::LeftBrace) {
-            self.begin_scope();
-            self.block_statement(chunk);
-            self.end_scope(chunk);
-        } else {
-            self.expression_statement(chunk);
-        }
-    }
-    fn begin_scope(&mut self) {
-        self.scope_depth += 1;
-    }
-    fn end_scope(&mut self, chunk: &mut Chunk) {
-        self.scope_depth -= 1;
-        let mut to_pop = 0;
-        while let Some(local) = self.locals.last() {
-            if local.depth <= self.scope_depth {
+
+    // ── Token navigation ────────────────────────────────────────────────────
+
+    pub(super) fn advance(&mut self) {
+        self.previous_token = self.current_token;
+        loop {
+            self.current_token = self.scanner.next_token();
+            if let TokenType::Error(message) = self.current_token.token_type {
+                self.error_at(self.current_token, &message);
+            } else {
                 break;
             }
-            self.locals.pop();
-            to_pop += 1;
-        }
-        if to_pop > 0 {
-            let c = chunk.write_constant(Value::Number(to_pop as f64));
-            self.emit_bytes(OpCode::OpPopN as u8, c, chunk);
         }
     }
-    fn block_statement(&mut self, chunk: &mut Chunk) {
-        while !self.check(TokenType::RightBrace) && !self.check(TokenType::EOF) {
-            self.declaration(chunk);
+
+    pub(super) fn consume(&mut self, token_type: TokenType, message: &str) {
+        if self.current_token.token_type != token_type {
+            self.error_at(self.current_token, message);
+        } else {
+            self.advance();
         }
-        self.consume(TokenType::RightBrace, "Expected '}' after the block");
     }
+
+    fn check(&self, token_type: TokenType) -> bool {
+        self.current_token.token_type == token_type
+    }
+
     pub(super) fn match_token_type(&mut self, token_type: TokenType) -> bool {
         if !self.check(token_type) {
             false
@@ -165,21 +77,52 @@ impl Compiler {
             true
         }
     }
-    fn check(&self, token_type: TokenType) -> bool {
-        self.current_token.token_type == token_type
-    }
-    fn consume_expression(&mut self, chunk: &mut Chunk) {
-        self.expression(chunk);
-        self.consume(TokenType::Semicolon, "Expect ';' after statement.");
-    }
-    fn print_statement(&mut self, chunk: &mut Chunk) {
-        self.consume_expression(chunk);
-        self.emit_byte(OpCode::OpPrint as u8, chunk);
+
+    // ── Scope & locals ──────────────────────────────────────────────────────
+
+    fn begin_scope(&mut self) {
+        self.scope_depth += 1;
     }
 
-    fn expression_statement(&mut self, chunk: &mut Chunk) {
-        self.consume_expression(chunk);
-        self.emit_byte(OpCode::OpPop as u8, chunk);
+    fn end_scope(&mut self, chunk: &mut Chunk) {
+        self.scope_depth -= 1;
+        let mut pop_count = 0;
+        while let Some(local) = self.locals.last() {
+            if local.depth <= self.scope_depth {
+                break;
+            }
+            self.locals.pop();
+            pop_count += 1;
+        }
+        if pop_count > 0 {
+            let c = chunk.write_constant(Value::Number(pop_count as f64));
+            self.emit_bytes(OpCode::OpPopN as u8, c, chunk);
+        }
+    }
+
+    fn add_local(&mut self, token: Token) {
+        self.locals.push(Local {
+            token,
+            depth: self.scope_depth,
+            is_initialized: false,
+        });
+    }
+
+    fn declare_variable(&mut self) {
+        if self.scope_depth == 0 {
+            return;
+        }
+        let token = self.previous_token;
+        for local in self.locals.iter().rev() {
+            if local.depth < self.scope_depth {
+                break;
+            }
+            if self.same_identifier(token, local.token) {
+                self.error_at(token, "Already a variable with this name");
+                return;
+            }
+        }
+        self.add_local(token);
     }
 
     fn resolve_local(&mut self) -> (bool, u8) {
@@ -187,7 +130,7 @@ impl Compiler {
         let mut found_uninitialized = false;
         for i in (0..self.locals.len()).rev() {
             let local = &self.locals[i];
-            if self.token_equals(local.token, token) {
+            if self.same_identifier(local.token, token) {
                 if !local.is_initialized {
                     found_uninitialized = true;
                     continue;
@@ -196,56 +139,154 @@ impl Compiler {
             }
         }
         if found_uninitialized {
-            self.error_at(token, "Can't read local variable in its own init");
+            self.error_at(token, "Can't read local variable in its own initializer");
         }
         (false, 0)
     }
-    fn token_equals(&self, a: Token, b: Token) -> bool {
+
+    fn same_identifier(&self, a: Token, b: Token) -> bool {
         a.length == b.length && self.scanner.get_lexeme(a) == self.scanner.get_lexeme(b)
     }
-    // ======= Pratt parser ==========
+
+    // ── Variables ───────────────────────────────────────────────────────────
+
+    fn identifier_constant(&mut self, chunk: &mut Chunk) -> u8 {
+        let name = self.scanner.get_lexeme(self.previous_token);
+        let var_name = unsafe { self.vm.as_mut().unwrap().allocate_string(name) };
+        chunk.write_constant(Value::Object(var_name))
+    }
+
+    fn parse_variable(&mut self, chunk: &mut Chunk) -> u8 {
+        self.consume(TokenType::Identifier, "Expected variable name");
+        self.declare_variable();
+        if self.scope_depth > 0 {
+            return 0; // dummy value, locals are not looked up by constant index
+        }
+        self.identifier_constant(chunk)
+    }
+
+    // ── Statements & declarations ────────────────────────────────────────────
+
+    pub(super) fn declaration(&mut self, chunk: &mut Chunk) {
+        if self.match_token_type(TokenType::Var) {
+            self.var_declaration(chunk);
+        } else {
+            self.statement(chunk);
+        }
+        if self.panic_mode {
+            self.synchronize();
+        }
+    }
+
+    fn var_declaration(&mut self, chunk: &mut Chunk) {
+        let constant = self.parse_variable(chunk);
+        if self.match_token_type(TokenType::Equal) {
+            self.expression(chunk);
+        } else {
+            self.emit_byte(OpCode::OpNil as u8, chunk);
+        }
+        self.consume(TokenType::Semicolon, "Expected ';' after variable declaration.");
+        if self.scope_depth > 0 {
+            self.locals.last_mut().unwrap().is_initialized = true;
+            return;
+        }
+        self.emit_bytes(OpCode::OpDefineGlobal as u8, constant, chunk);
+    }
+
+    fn statement(&mut self, chunk: &mut Chunk) {
+        if self.match_token_type(TokenType::Print) {
+            self.print_statement(chunk);
+        } else if self.match_token_type(TokenType::LeftBrace) {
+            self.begin_scope();
+            self.block(chunk);
+            self.end_scope(chunk);
+        } else {
+            self.expression_statement(chunk);
+        }
+    }
+
+    fn block(&mut self, chunk: &mut Chunk) {
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::EOF) {
+            self.declaration(chunk);
+        }
+        self.consume(TokenType::RightBrace, "Expected '}' after block");
+    }
+
+    fn print_statement(&mut self, chunk: &mut Chunk) {
+        self.expression(chunk);
+        self.consume(TokenType::Semicolon, "Expected ';' after value.");
+        self.emit_byte(OpCode::OpPrint as u8, chunk);
+    }
+
+    fn expression_statement(&mut self, chunk: &mut Chunk) {
+        self.expression(chunk);
+        self.consume(TokenType::Semicolon, "Expected ';' after expression.");
+        self.emit_byte(OpCode::OpPop as u8, chunk);
+    }
+
+    // ── Pratt parser ─────────────────────────────────────────────────────────
+
     fn parse_precedence(&mut self, precedence: Precedence, chunk: &mut Chunk) {
         self.advance();
-        // prefix
         let can_assign = precedence <= Precedence::Assignment;
-        let prefix_rule = get_rule(self.previous_token.token_type).prefix;
-        match prefix_rule {
-            Some(prefix_fn) => {
-                prefix_fn(self, can_assign, chunk);
-            }
+        match get_rule(self.previous_token.token_type).prefix {
+            Some(prefix_fn) => prefix_fn(self, can_assign, chunk),
             None => {
-                self.error_at(self.previous_token, "Expect expression.");
+                self.error_at(self.previous_token, "Expected expression.");
                 return;
             }
         }
-        // infix
         while precedence <= get_rule(self.current_token.token_type).precedence {
             self.advance();
-            let infix_rule = get_rule(self.previous_token.token_type).infix;
-            if let Some(infix_fn) = infix_rule {
+            if let Some(infix_fn) = get_rule(self.previous_token.token_type).infix {
                 infix_fn(self, can_assign, chunk);
             }
         }
         if can_assign && self.match_token_type(TokenType::Equal) {
             self.error_at(self.previous_token, "Invalid assignment target.");
-            return;
         }
     }
+
     pub(super) fn expression(&mut self, chunk: &mut Chunk) {
-        self.parse_precedence(Precedence::Assignment, chunk)
+        self.parse_precedence(Precedence::Assignment, chunk);
     }
 
-    // ======= Functions =========
+    // ── Parse functions (prefix / infix) ─────────────────────────────────────
+
     pub(super) fn number(&mut self, _can_assign: bool, chunk: &mut Chunk) {
         let lexeme = self.scanner.get_lexeme(self.previous_token);
         let val = Value::Number(lexeme.parse().unwrap());
         self.emit_constant(val, chunk);
     }
 
+    pub(super) fn string(&mut self, _can_assign: bool, chunk: &mut Chunk) {
+        let lexeme = self.scanner.get_lexeme(self.previous_token);
+        let string_value = lexeme[1..lexeme.len() - 1].to_string();
+        let obj_ptr = unsafe { self.vm.as_mut().unwrap().allocate_string(string_value.as_str()) };
+        self.emit_constant(Value::Object(obj_ptr), chunk);
+    }
+
+    pub(super) fn variable(&mut self, can_assign: bool, chunk: &mut Chunk) {
+        let (is_local, local_idx) = self.resolve_local();
+        let (get_op, set_op, arg) = if is_local {
+            (OpCode::OpGetLocal, OpCode::OpSetLocal, local_idx)
+        } else {
+            let global_idx = self.identifier_constant(chunk);
+            (OpCode::OpGetGlobal, OpCode::OpSetGlobal, global_idx)
+        };
+        if can_assign && self.match_token_type(TokenType::Equal) {
+            self.expression(chunk);
+            self.emit_bytes(set_op as u8, arg, chunk);
+        } else {
+            self.emit_bytes(get_op as u8, arg, chunk);
+        }
+    }
+
     pub(super) fn grouping(&mut self, _can_assign: bool, chunk: &mut Chunk) {
         self.expression(chunk);
-        self.consume(TokenType::RightParen, "Expect ')' after expression");
+        self.consume(TokenType::RightParen, "Expected ')' after expression");
     }
+
     pub(super) fn unary(&mut self, _can_assign: bool, chunk: &mut Chunk) {
         let operator_type = self.previous_token.token_type;
         self.parse_precedence(Precedence::Unary, chunk);
@@ -255,6 +296,7 @@ impl Compiler {
             _ => unreachable!("Unknown unary operator"),
         }
     }
+
     pub(super) fn binary(&mut self, _can_assign: bool, chunk: &mut Chunk) {
         let operator_type = self.previous_token.token_type;
         let rule = get_rule(operator_type);
@@ -273,38 +315,13 @@ impl Compiler {
             _ => unreachable!("Unknown binary operator"),
         }
     }
+
     pub(super) fn literal(&mut self, _can_assign: bool, chunk: &mut Chunk) {
-        let operator_type = self.previous_token.token_type;
-        match operator_type {
+        match self.previous_token.token_type {
             TokenType::Nil => self.emit_byte(OpCode::OpNil as u8, chunk),
             TokenType::True => self.emit_byte(OpCode::OpTrue as u8, chunk),
             TokenType::False => self.emit_byte(OpCode::OpFalse as u8, chunk),
-            _ => unreachable!("Unknown literal operator"),
-        }
-    }
-    pub(super) fn string(&mut self, _can_assign: bool, chunk: &mut Chunk) {
-        let lexeme = self.scanner.get_lexeme(self.previous_token);
-        let string_value = lexeme[1..lexeme.len() - 1].to_string();
-        let obj_ptr = unsafe { self.vm.as_mut().unwrap().allocate_string(string_value.as_str()) };
-        self.emit_constant(Value::Object(obj_ptr), chunk);
-    }
-    pub(super) fn identifier(&mut self, can_assign: bool, chunk: &mut Chunk) {
-        let get_op: OpCode;
-        let set_op: OpCode;
-        let (is_local, mut constant) = self.resolve_local();
-        if is_local {
-            get_op = OpCode::OpGetLocal;
-            set_op = OpCode::OpSetLocal;
-        } else {
-            get_op = OpCode::OpGetGlobal;
-            set_op = OpCode::OpSetGlobal;
-            constant = self.identifier_constant(chunk);
-        }
-        if can_assign && self.match_token_type(TokenType::Equal) {
-            self.expression(chunk);
-            self.emit_bytes(set_op as u8, constant, chunk);
-        } else {
-            self.emit_bytes(get_op as u8, constant, chunk);
+            _ => unreachable!("Unknown literal"),
         }
     }
 }

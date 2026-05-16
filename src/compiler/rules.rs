@@ -2,6 +2,8 @@ use super::Compiler;
 use crate::chunk::Chunk;
 use crate::token::TokenType;
 
+// ── Precedence ───────────────────────────────────────────────────────────────
+
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum Precedence {
     None,
@@ -16,6 +18,7 @@ pub enum Precedence {
     Call,       // . ()
     Primary,
 }
+
 impl TryFrom<u8> for Precedence {
     type Error = ();
 
@@ -32,10 +35,12 @@ impl TryFrom<u8> for Precedence {
             8 => Ok(Precedence::Unary),
             9 => Ok(Precedence::Call),
             10 => Ok(Precedence::Primary),
-            _ => Err(()), // Fails if the number is out of bounds
+            _ => Err(()),
         }
     }
 }
+
+// ── Parse rules ──────────────────────────────────────────────────────────────
 
 pub type ParseFn = fn(&mut Compiler, bool, &mut Chunk);
 
@@ -45,67 +50,27 @@ pub struct ParseRule {
     pub precedence: Precedence,
 }
 
+impl ParseRule {
+    fn new(prefix: Option<ParseFn>, infix: Option<ParseFn>, precedence: Precedence) -> Self {
+        ParseRule { prefix, infix, precedence }
+    }
+}
+
 pub fn get_rule(token_type: TokenType) -> ParseRule {
     match token_type {
-        TokenType::LeftParen => ParseRule {
-            prefix: Some(Compiler::grouping),
-            infix: None,
-            precedence: Precedence::None,
-        },
-        TokenType::Minus => ParseRule {
-            prefix: Some(Compiler::unary),
-            infix: Some(Compiler::binary),
-            precedence: Precedence::Term,
-        },
-        TokenType::Plus => ParseRule {
-            prefix: None,
-            infix: Some(Compiler::binary),
-            precedence: Precedence::Term,
-        },
-        TokenType::Star | TokenType::Slash => ParseRule {
-            prefix: None,
-            infix: Some(Compiler::binary),
-            precedence: Precedence::Factor,
-        },
-        TokenType::Number => ParseRule {
-            prefix: Some(Compiler::number),
-            infix: None,
-            precedence: Precedence::None,
-        },
-        TokenType::Nil | TokenType::False | TokenType::True => ParseRule {
-            prefix: Some(Compiler::literal),
-            infix: None,
-            precedence: Precedence::None,
-        },
-        TokenType::Bang => ParseRule {
-            prefix: Some(Compiler::unary),
-            infix: None,
-            precedence: Precedence::None,
-        },
-        TokenType::BangEqual | TokenType::EqualEqual => ParseRule {
-            prefix: None,
-            infix: Some(Compiler::binary),
-            precedence: Precedence::Equality,
-        },
-        TokenType::Greater | TokenType::GreaterEqual | TokenType::Less | TokenType::LessEqual => ParseRule {
-            prefix: None,
-            infix: Some(Compiler::binary),
-            precedence: Precedence::Comparison,
-        },
-        TokenType::String => ParseRule {
-            prefix: Some(Compiler::string),
-            infix: None,
-            precedence: Precedence::None,
-        },
-        TokenType::Identifier => ParseRule {
-            prefix: Some(Compiler::identifier),
-            infix: None,
-            precedence: Precedence::None,
-        },
-        _ => ParseRule {
-            prefix: None,
-            infix: None,
-            precedence: Precedence::None,
-        },
+        TokenType::LeftParen => ParseRule::new(Some(Compiler::grouping), None, Precedence::None),
+        TokenType::Bang => ParseRule::new(Some(Compiler::unary), None, Precedence::None),
+        TokenType::Minus => ParseRule::new(Some(Compiler::unary), Some(Compiler::binary), Precedence::Term),
+        TokenType::Plus => ParseRule::new(None, Some(Compiler::binary), Precedence::Term),
+        TokenType::Star | TokenType::Slash => ParseRule::new(None, Some(Compiler::binary), Precedence::Factor),
+        TokenType::BangEqual | TokenType::EqualEqual => ParseRule::new(None, Some(Compiler::binary), Precedence::Equality),
+        TokenType::Greater | TokenType::GreaterEqual | TokenType::Less | TokenType::LessEqual => {
+            ParseRule::new(None, Some(Compiler::binary), Precedence::Comparison)
+        }
+        TokenType::Number => ParseRule::new(Some(Compiler::number), None, Precedence::None),
+        TokenType::String => ParseRule::new(Some(Compiler::string), None, Precedence::None),
+        TokenType::Identifier => ParseRule::new(Some(Compiler::variable), None, Precedence::None),
+        TokenType::Nil | TokenType::False | TokenType::True => ParseRule::new(Some(Compiler::literal), None, Precedence::None),
+        _ => ParseRule::new(None, None, Precedence::None),
     }
 }
