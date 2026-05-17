@@ -1,0 +1,63 @@
+var globalSum = 0;
+var loopCount = 0;
+
+print "--- Start ---";
+
+for (var i = 1; i <= 3; i = i + 1) {
+    var forLocal = i * 10;
+    
+    // A block to deepen the scope before the while loop
+    {
+        var blockLocal = forLocal + 1;
+        var j = 0;
+        
+        while (j < 4) {
+            var whileLocal = j * 100;
+            
+            // Nested block inside the while loop
+            {
+                var deepestLocal = whileLocal + 5;
+                
+                if (j == 1) {
+                    var ifLocal = 999;
+                    print "continue while";
+                    // Must pop: ifLocal, deepestLocal, whileLocal
+                    // Must NOT pop: j, blockLocal, forLocal, i
+                    // Must jump to: condition (j < 4)
+                    j = j + 1; // Prevent infinite loop manually
+                    continue;
+                }
+                
+                if (j == 3) {
+                    var ifLocal2 = 888;
+                    print "break while";
+                    // Must pop: ifLocal2, deepestLocal, whileLocal
+                    // Must NOT pop: j, blockLocal, forLocal, i
+                    // Must jump to: after the while loop
+                    break; 
+                }
+                
+                globalSum = globalSum + deepestLocal;
+            }
+            
+            j = j + 1;
+        }
+        
+        if (i == 2) {
+            var anotherLocal = 777;
+            print "continue for";
+            // Must pop: anotherLocal, j, blockLocal, forLocal
+            // Must NOT pop: i
+            // Must jump to: increment clause (i = i + 1)
+            continue;
+        }
+        
+        globalSum = globalSum + blockLocal;
+    }
+    
+    loopCount = loopCount + 1;
+}
+
+print "--- End ---";
+print globalSum; // Expected: 16 (i=1) + 216 (i=3) + 11 (i=1) + 31 (i=3) = 274
+print loopCount; // Expected: 2 (since i=2 hits 'continue for')

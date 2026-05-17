@@ -201,20 +201,8 @@ impl Compiler {
 
     fn end_scope(&mut self, chunk: &mut Chunk) {
         self.scope_depth -= 1;
-        let mut pop_count = 0;
-        while let Some(local) = self.locals.last() {
-            if local.depth <= self.scope_depth {
-                break;
-            }
-            self.locals.pop();
-            pop_count += 1;
-        }
-        if pop_count > 0 {
-            let c = chunk.write_constant(Value::Number(pop_count as f64));
-            self.emit_bytes(OpCode::OpPopN as u8, c, chunk);
-        }
+        self.discard_locals(self.scope_depth, true, chunk);
     }
-
     fn add_local(&mut self, token: Token) {
         self.locals.push(Local {
             token,
@@ -360,21 +348,29 @@ impl Compiler {
         }
         self.patch_jump(chunk, else_jump);
     }
+
+    fn discard_locals(&mut self, target_depth: usize, modify_compiler_state: bool, chunk: &mut Chunk) {
+        let mut pop_count = 0;
+        for local in self.locals.iter().rev() {
+            if local.depth <= target_depth {
+                break;
+            }
+            pop_count += 1;
+        }
+        if modify_compiler_state {
+            for _ in 0..pop_count {
+                self.locals.pop();
+            }
+        }
+        if pop_count > 0 {
+            let c = chunk.write_constant(Value::Number(pop_count as f64));
+            self.emit_bytes(OpCode::OpPopN as u8, c, chunk);
+        }
+    }
     fn break_statement(&mut self, chunk: &mut Chunk) {
         self.consume(TokenType::Semicolon, "Expected ';' after break.");
-        let jumps = self.jumps.pop();
-        if let Some((loop_depth, start, mut jump)) = jumps {
-            let mut pop_count = 0;
-            for local in self.locals.iter().rev() {
-                if local.depth <= loop_depth {
-                    break;
-                }
-                pop_count += 1;
-            }
-            if pop_count > 0 {
-                let c = chunk.write_constant(Value::Number(pop_count as f64));
-                self.emit_bytes(OpCode::OpPopN as u8, c, chunk);
-            }
+        if let Some((loop_depth, start, mut jump)) = self.jumps.pop() {
+            self.discard_locals(loop_depth,false, chunk);
             let emit_jump = self.emit_jump(chunk, OpCode::OpJump);
             jump.push(emit_jump);
             self.jumps.push((loop_depth, start, jump));
@@ -384,19 +380,8 @@ impl Compiler {
     }
     fn continue_statement(&mut self, chunk: &mut Chunk) {
         self.consume(TokenType::Semicolon, "Expected ';' after continue.");
-        let jumps = self.jumps.pop();
-        if let Some((loop_depth, start, jump)) = jumps {
-            let mut pop_count = 0;
-            for local in self.locals.iter().rev() {
-                if local.depth <= loop_depth {
-                    break;
-                }
-                pop_count += 1;
-            }
-            if pop_count > 0 {
-                let c = chunk.write_constant(Value::Number(pop_count as f64));
-                self.emit_bytes(OpCode::OpPopN as u8, c, chunk);
-            }
+        if let Some((loop_depth, start, jump)) = self.jumps.pop() {
+            self.discard_locals(loop_depth, false, chunk);
             self.emit_loop(chunk, start);
             self.jumps.push((loop_depth, start, jump));
         } else {
