@@ -1,0 +1,14 @@
+{
+    var i = 1;
+    while (true) {
+        var a = 2; // Local variable inside the loop
+        
+        if (i >= 10) {
+            var b = 3; // Local variable inside the if-statement
+            break;
+        }
+        
+        print i;
+        i = i + 1;
+    }
+}

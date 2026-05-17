@@ -1,0 +1,160 @@
+// Globals
+var g = 100;
+var total = 0;
+var outerCount = 0;
+
+print "start";
+
+// --------------------
+// 1) while + globals
+// --------------------
+var i = 0;
+while (true) {
+  print "while-top";
+  print i;
+
+  if (i == 3) {
+    print "break while at";
+    print i;
+    break;
+  }
+
+  total = total + i;
+  i = i + 1;
+}
+
+print "after while";
+print i;       // should still be 3
+print total;   // 0 + 1 + 2 = 3
+
+// ------------------------------------
+// 2) block local + while + inner local
+// ------------------------------------
+{
+  var x = 10;
+  var seen = 0;
+
+  while (x > 0) {
+    var loopLocal = x * 2;
+    seen = seen + 1;
+
+    if (x == 7) {
+      var onlyInBreakPath = 999;
+      print "breaking local while";
+      print onlyInBreakPath;
+      break;
+    }
+
+    x = x - 1;
+  }
+
+  print "after local while";
+  print x;      // should be 7
+  print seen;   // should be 4
+}
+
+// ------------------------------------------------------
+// 3) for loop with initializer local + break in the body
+// ------------------------------------------------------
+for (var j = 0; j < 10; j = j + 1) {
+  print "for-j";
+  print j;
+
+  if (j == 5) {
+    print "break for at";
+    print j;
+    break;
+  }
+
+  total = total + j;
+}
+
+print "after for";
+print total;
+
+// --------------------------------------------------------
+// 4) for loop + nested block locals + break from inner body
+// --------------------------------------------------------
+for (var a = 1; a <= 3; a = a + 1) {
+  print "outer a";
+  print a;
+
+  {
+    var blockValue = a * 10;
+    print blockValue;
+
+    if (a == 2) {
+      var temp = 222;
+      print "break outer-for from block";
+      print temp;
+      break;
+    }
+  }
+
+  outerCount = outerCount + 1;
+}
+
+print "after outer for";
+print outerCount; // should be 1
+
+// ---------------------------------------------------
+// 5) nested loops: break only exits the innermost loop
+// ---------------------------------------------------
+var row = 0;
+while (row < 3) {
+  print "row";
+  print row;
+
+  for (var col = 0; col < 5; col = col + 1) {
+    print "col";
+    print col;
+
+    if (col == 2) {
+      print "break inner for";
+      break;
+    }
+
+    total = total + 1;
+  }
+
+  row = row + 1;
+}
+
+print "after nested loops";
+print row;   // should be 3
+print total;
+
+// ----------------------------------------------------
+// 6) break in both branches across different loop types
+// ----------------------------------------------------
+var m = 0;
+while (m < 10) {
+  if (m < 2) {
+    var left = m + 1000;
+    print left;
+  } else {
+    var right = m + 2000;
+    print right;
+    break;
+  }
+
+  m = m + 1;
+}
+
+print "after mixed branch while";
+print m;   // should be 2
+
+// ---------------------------------------------------
+// 7) globals should still be accessible after breaks
+// ---------------------------------------------------
+for (var z = 0; z < 10; z = z + 1) {
+  if (z == 4) {
+    g = g + z;
+    break;
+  }
+}
+
+print "final globals";
+print g;
+print total;
+print "done";

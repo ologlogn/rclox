@@ -110,6 +110,7 @@ impl Scanner {
             's' => self.check_keyword(1, "uper", TokenType::Super),
             'v' => self.check_keyword(1, "ar", TokenType::Var),
             'w' => self.check_keyword(1, "hile", TokenType::While),
+            'b' => self.check_keyword(1, "reak", TokenType::Break),
             'f' => {
                 if self.current - self.start > 1 {
                     match self.char_at_nth(self.start, 1) {

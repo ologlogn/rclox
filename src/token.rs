@@ -47,6 +47,7 @@ pub enum TokenType {
     True,
     Var,
     While,
+    Break,
     Error(&'static str), // a constant message at the compile time
     EOF,
 }

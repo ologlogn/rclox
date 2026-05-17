@@ -283,6 +283,7 @@ impl Compiler {
     // ── Control flow ────────────────────────────────────────────
     fn for_statement(&mut self, chunk: &mut Chunk) {
         self.begin_scope();
+        self.jumps.push((self.scope_depth, Vec::new()));
         self.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
         if self.match_token_type(TokenType::Semicolon) {
         } else if self.match_token_type(TokenType::Var) {
@@ -292,6 +293,8 @@ impl Compiler {
         }
         let mut loop_start = chunk.count();
         let mut is_conditional = false;
+        // we can't use this to check patch jump, because 0 is valid code. we can't set to -1 because it's unsigned.
+        // that's why we use is_conditional
         let mut exit_jump = 0;
         if !self.match_token_type(TokenType::Semicolon) {
             is_conditional = true;
@@ -316,9 +319,14 @@ impl Compiler {
             self.patch_jump(chunk, exit_jump);
             self.emit_pop(chunk);
         }
+        let (_, breaks) = self.jumps.pop().unwrap();
+        for break_ in breaks {
+            self.patch_jump(chunk, break_);
+        }
         self.end_scope(chunk);
     }
     fn while_statement(&mut self, chunk: &mut Chunk) {
+        self.jumps.push((self.scope_depth, Vec::new()));
         let loop_start = chunk.count();
         self.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
         self.expression(chunk);
@@ -329,6 +337,10 @@ impl Compiler {
         self.emit_loop(chunk, loop_start);
         self.patch_jump(chunk, exit_jump);
         self.emit_pop(chunk);
+        let (_, breaks) = self.jumps.pop().unwrap();
+        for break_ in breaks {
+            self.patch_jump(chunk, break_);
+        }
     }
 
     fn if_statement(&mut self, chunk: &mut Chunk) {
@@ -346,10 +358,34 @@ impl Compiler {
         }
         self.patch_jump(chunk, else_jump);
     }
+    fn break_statement(&mut self, chunk: &mut Chunk) {
+        self.consume(TokenType::Semicolon, "Expected ';' after break.");
+        let jumps = self.jumps.pop();
+        if let Some((loop_depth, mut jump)) = jumps {
+            let mut pop_count = 0;
+            for local in self.locals.iter().rev() {
+                if local.depth <= loop_depth {
+                    break;
+                }
+                pop_count += 1;
+            }
+            if pop_count > 0 {
+                let c = chunk.write_constant(Value::Number(pop_count as f64));
+                self.emit_bytes(OpCode::OpPopN as u8, c, chunk);
+            }
+            let emit_jump = self.emit_jump(chunk, OpCode::OpJump);
+            jump.push(emit_jump);
+            self.jumps.push((loop_depth, jump));
+        } else {
+            self.error_at(self.previous_token, "Break can't be used outside loops");
+        }
+    }
     // ── Statements & declarations ────────────────────────────────────────────
     fn statement(&mut self, chunk: &mut Chunk) {
         if self.match_token_type(TokenType::Print) {
             self.print_statement(chunk);
+        } else if self.match_token_type(TokenType::Break) {
+            self.break_statement(chunk);
         } else if self.match_token_type(TokenType::For) {
             self.for_statement(chunk);
         } else if self.match_token_type(TokenType::If) {
