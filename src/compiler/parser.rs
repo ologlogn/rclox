@@ -283,7 +283,7 @@ impl Compiler {
     // ── Control flow ────────────────────────────────────────────
     fn for_statement(&mut self, chunk: &mut Chunk) {
         self.begin_scope();
-        self.jumps.push((self.scope_depth, Vec::new()));
+        self.jumps.push((self.scope_depth, 0, Vec::new()));
         self.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
         if self.match_token_type(TokenType::Semicolon) {
         } else if self.match_token_type(TokenType::Var) {
@@ -292,6 +292,7 @@ impl Compiler {
             self.expression_statement(chunk);
         }
         let mut loop_start = chunk.count();
+        self.jumps.last_mut().unwrap().1 = loop_start;
         let mut is_conditional = false;
         // we can't use this to check patch jump, because 0 is valid code. we can't set to -1 because it's unsigned.
         // that's why we use is_conditional
@@ -311,6 +312,7 @@ impl Compiler {
             self.consume(TokenType::RightParen, "Expected ')' after clauses.");
             self.emit_loop(chunk, loop_start);
             loop_start = increment_start;
+            self.jumps.last_mut().unwrap().1 = loop_start;
             self.patch_jump(chunk, body_jump);
         }
         self.statement(chunk);
@@ -319,15 +321,15 @@ impl Compiler {
             self.patch_jump(chunk, exit_jump);
             self.emit_pop(chunk);
         }
-        let (_, breaks) = self.jumps.pop().unwrap();
+        let (_, _, breaks) = self.jumps.pop().unwrap();
         for break_ in breaks {
             self.patch_jump(chunk, break_);
         }
         self.end_scope(chunk);
     }
     fn while_statement(&mut self, chunk: &mut Chunk) {
-        self.jumps.push((self.scope_depth, Vec::new()));
         let loop_start = chunk.count();
+        self.jumps.push((self.scope_depth, loop_start, Vec::new()));
         self.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
         self.expression(chunk);
         self.consume(TokenType::RightParen, "Expected ')' after condition.");
@@ -337,7 +339,7 @@ impl Compiler {
         self.emit_loop(chunk, loop_start);
         self.patch_jump(chunk, exit_jump);
         self.emit_pop(chunk);
-        let (_, breaks) = self.jumps.pop().unwrap();
+        let (_, _, breaks) = self.jumps.pop().unwrap();
         for break_ in breaks {
             self.patch_jump(chunk, break_);
         }
@@ -361,7 +363,7 @@ impl Compiler {
     fn break_statement(&mut self, chunk: &mut Chunk) {
         self.consume(TokenType::Semicolon, "Expected ';' after break.");
         let jumps = self.jumps.pop();
-        if let Some((loop_depth, mut jump)) = jumps {
+        if let Some((loop_depth, start, mut jump)) = jumps {
             let mut pop_count = 0;
             for local in self.locals.iter().rev() {
                 if local.depth <= loop_depth {
@@ -375,9 +377,30 @@ impl Compiler {
             }
             let emit_jump = self.emit_jump(chunk, OpCode::OpJump);
             jump.push(emit_jump);
-            self.jumps.push((loop_depth, jump));
+            self.jumps.push((loop_depth, start, jump));
         } else {
             self.error_at(self.previous_token, "Break can't be used outside loops");
+        }
+    }
+    fn continue_statement(&mut self, chunk: &mut Chunk) {
+        self.consume(TokenType::Semicolon, "Expected ';' after continue.");
+        let jumps = self.jumps.pop();
+        if let Some((loop_depth, start, jump)) = jumps {
+            let mut pop_count = 0;
+            for local in self.locals.iter().rev() {
+                if local.depth <= loop_depth {
+                    break;
+                }
+                pop_count += 1;
+            }
+            if pop_count > 0 {
+                let c = chunk.write_constant(Value::Number(pop_count as f64));
+                self.emit_bytes(OpCode::OpPopN as u8, c, chunk);
+            }
+            self.emit_loop(chunk, start);
+            self.jumps.push((loop_depth, start, jump));
+        } else {
+            self.error_at(self.previous_token, "Continue can't be used outside loops");
         }
     }
     // ── Statements & declarations ────────────────────────────────────────────
@@ -386,6 +409,8 @@ impl Compiler {
             self.print_statement(chunk);
         } else if self.match_token_type(TokenType::Break) {
             self.break_statement(chunk);
+        } else if self.match_token_type(TokenType::Continue) {
+            self.continue_statement(chunk);
         } else if self.match_token_type(TokenType::For) {
             self.for_statement(chunk);
         } else if self.match_token_type(TokenType::If) {

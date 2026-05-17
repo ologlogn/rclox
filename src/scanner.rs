@@ -100,7 +100,6 @@ impl Scanner {
         }
         let token_type = match self.char_at_nth(self.start, 0) {
             'a' => self.check_keyword(1, "nd", TokenType::And),
-            'c' => self.check_keyword(1, "lass", TokenType::Class),
             'e' => self.check_keyword(1, "lse", TokenType::Else),
             'i' => self.check_keyword(1, "f", TokenType::If),
             'n' => self.check_keyword(1, "il", TokenType::Nil),
@@ -111,6 +110,17 @@ impl Scanner {
             'v' => self.check_keyword(1, "ar", TokenType::Var),
             'w' => self.check_keyword(1, "hile", TokenType::While),
             'b' => self.check_keyword(1, "reak", TokenType::Break),
+            'c' => {
+                if self.current - self.start > 1 {
+                    match self.char_at_nth(self.start, 1) {
+                        'l' => self.check_keyword(2, "ass", TokenType::Class),
+                        'o' => self.check_keyword(2, "ntinue", TokenType::Continue),
+                        _ => TokenType::Identifier
+                    }
+                } else {
+                    TokenType::Identifier
+                }
+            },
             'f' => {
                 if self.current - self.start > 1 {
                     match self.char_at_nth(self.start, 1) {

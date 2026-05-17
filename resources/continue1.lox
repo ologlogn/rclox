@@ -1,0 +1,32 @@
+var sum = 0;
+var i = 0;
+
+print "start";
+
+while (i < 5) {
+    var a = i;     // local to loop body
+    var b = a * 2; // local to loop body
+    
+    i = i + 1;     // Important: increment early so continue doesn't infinite loop
+    
+    if (a == 2) {
+        var temp = 99; // nested local
+        print "skipping 2";
+        continue;
+    }
+    
+    if (a == 4) {
+        var temp1 = 88; // nested local
+        {
+            var temp2 = 77; // double nested local
+            print "skipping 4";
+            continue;
+        }
+    }
+    
+    sum = sum + b;
+    print a;
+}
+
+print "done";
+print sum; // Should be 0*2 + 1*2 + 3*2 = 8

@@ -1,0 +1,39 @@
+var sum = 0;
+
+// Outer loop just to prove we don't accidentally pop global/outer scope
+for (var i = 1; i <= 3; i = i + 1) {
+    print "--- Iteration ---";
+    print i;
+
+    var base = i * 10; // Depth: loop body (should be popped on continue)
+
+    // A block just to make the scope deeper
+    {
+        var temp1 = 1; // Depth: nested block (should be popped)
+
+        if (i == 2) {
+            var temp2 = 2; // Depth: if block (should be popped)
+            print "Skipping 2";
+            continue; 
+        }
+
+        var temp3 = 3; // Depth: nested block
+
+        // Nested loop to ensure continue only affects the innermost loop
+        for (var j = 1; j <= 2; j = j + 1) {
+            var nestedBase = j * 100;
+            
+            if (j == 1) {
+                print "Skipping nested 1";
+                continue; 
+            }
+            
+            sum = sum + nestedBase;
+        }
+
+        sum = sum + base;
+    }
+}
+
+print "--- Done ---";
+print sum; 

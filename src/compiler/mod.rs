@@ -18,7 +18,8 @@ pub struct Compiler {
     locals: Vec<Local>,
     scope_depth: usize,
     vm: *mut Vm,
-    jumps: Vec<(usize,Vec<usize>)>, //loop jump depth in the program scope, jumps in the loop
+    //loop jump depth in the program scope, starting offset of loop, jumps in the loop
+    jumps: Vec<(usize,usize,Vec<usize>)>,
 }
 
 pub struct Local {
