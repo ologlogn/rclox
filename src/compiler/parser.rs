@@ -77,224 +77,6 @@ impl Compiler {
             true
         }
     }
-
-    // ── Scope & locals ──────────────────────────────────────────────────────
-
-    fn begin_scope(&mut self) {
-        self.scope_depth += 1;
-    }
-
-    fn end_scope(&mut self, chunk: &mut Chunk) {
-        self.scope_depth -= 1;
-        let mut pop_count = 0;
-        while let Some(local) = self.locals.last() {
-            if local.depth <= self.scope_depth {
-                break;
-            }
-            self.locals.pop();
-            pop_count += 1;
-        }
-        if pop_count > 0 {
-            let c = chunk.write_constant(Value::Number(pop_count as f64));
-            self.emit_bytes(OpCode::OpPopN as u8, c, chunk);
-        }
-    }
-
-    fn add_local(&mut self, token: Token) {
-        self.locals.push(Local {
-            token,
-            depth: self.scope_depth,
-            is_initialized: false,
-        });
-    }
-
-    fn declare_variable(&mut self) {
-        if self.scope_depth == 0 {
-            return;
-        }
-        let token = self.previous_token;
-        for local in self.locals.iter().rev() {
-            if local.depth < self.scope_depth {
-                break;
-            }
-            if self.same_identifier(token, local.token) {
-                self.error_at(token, "Already a variable with this name");
-                return;
-            }
-        }
-        self.add_local(token);
-    }
-
-    fn resolve_local(&mut self) -> (bool, u8) {
-        let token = self.previous_token;
-        let mut found_uninitialized = false;
-        for i in (0..self.locals.len()).rev() {
-            let local = &self.locals[i];
-            if self.same_identifier(local.token, token) {
-                if !local.is_initialized {
-                    found_uninitialized = true;
-                    continue;
-                }
-                return (true, i as u8);
-            }
-        }
-        if found_uninitialized {
-            self.error_at(token, "Can't read local variable in its own initializer");
-        }
-        (false, 0)
-    }
-
-    fn same_identifier(&self, a: Token, b: Token) -> bool {
-        a.length == b.length && self.scanner.get_lexeme(a) == self.scanner.get_lexeme(b)
-    }
-
-    // ── Variables ───────────────────────────────────────────────────────────
-
-    fn identifier_constant(&mut self, chunk: &mut Chunk) -> u8 {
-        let name = self.scanner.get_lexeme(self.previous_token);
-        let var_name = unsafe { self.vm.as_mut().unwrap().allocate_string(name) };
-        chunk.write_constant(Value::Object(var_name))
-    }
-
-    fn parse_variable(&mut self, chunk: &mut Chunk) -> u8 {
-        self.consume(TokenType::Identifier, "Expected variable name");
-        self.declare_variable();
-        if self.scope_depth > 0 {
-            return 0; // dummy value, locals are not looked up by constant index
-        }
-        self.identifier_constant(chunk)
-    }
-
-    // ── Statements & declarations ────────────────────────────────────────────
-
-    pub(super) fn declaration(&mut self, chunk: &mut Chunk) {
-        if self.match_token_type(TokenType::Var) {
-            self.var_declaration(chunk);
-        } else {
-            self.statement(chunk);
-        }
-        if self.panic_mode {
-            self.synchronize();
-        }
-    }
-
-    fn var_declaration(&mut self, chunk: &mut Chunk) {
-        let constant = self.parse_variable(chunk);
-        if self.match_token_type(TokenType::Equal) {
-            self.expression(chunk);
-        } else {
-            self.emit_byte(OpCode::OpNil as u8, chunk);
-        }
-        self.consume(TokenType::Semicolon, "Expected ';' after variable declaration.");
-        if self.scope_depth > 0 {
-            self.locals.last_mut().unwrap().is_initialized = true;
-            return;
-        }
-        self.emit_bytes(OpCode::OpDefineGlobal as u8, constant, chunk);
-    }
-
-    fn statement(&mut self, chunk: &mut Chunk) {
-        if self.match_token_type(TokenType::Print) {
-            self.print_statement(chunk);
-        } else if self.match_token_type(TokenType::For) {
-            self.for_statement(chunk);
-        } else if self.match_token_type(TokenType::If) {
-            self.if_statement(chunk);
-        } else if self.match_token_type(TokenType::While) {
-            self.while_statement(chunk)
-        } else if self.match_token_type(TokenType::LeftBrace) {
-            self.begin_scope();
-            self.block(chunk);
-            self.end_scope(chunk);
-        } else {
-            self.expression_statement(chunk);
-        }
-    }
-    fn for_statement(&mut self, chunk: &mut Chunk) {
-        self.begin_scope();
-        self.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
-        if self.match_token_type(TokenType::Semicolon) {
-        } else if self.match_token_type(TokenType::Var) {
-            self.var_declaration(chunk);
-        } else {
-            self.expression_statement(chunk);
-        }
-        let mut loop_start = chunk.count();
-        let mut is_conditional = false;
-        let mut exit_jump = 0;
-        if !self.match_token_type(TokenType::Semicolon) {
-            is_conditional = true;
-            self.expression(chunk);
-            self.consume(TokenType::Semicolon, "Expected ';' after the loop condition.");
-            exit_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
-            self.emit_pop(chunk);
-        }
-        if !self.match_token_type(TokenType::RightParen) {
-            let body_jump = self.emit_jump(chunk, OpCode::OpJump);
-            let increment_start = chunk.count();
-            self.expression(chunk);
-            self.emit_pop(chunk);
-            self.consume(TokenType::RightParen, "Expected ')' after clauses.");
-            self.emit_loop(chunk, loop_start);
-            loop_start = increment_start;
-            self.patch_jump(chunk, body_jump);
-        }
-        self.statement(chunk);
-        self.emit_loop(chunk, loop_start);
-        if is_conditional {
-            self.patch_jump(chunk, exit_jump);
-            self.emit_pop(chunk);
-        }
-        self.end_scope(chunk);
-    }
-    fn while_statement(&mut self, chunk: &mut Chunk) {
-        let loop_start = chunk.count();
-        self.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
-        self.expression(chunk);
-        self.consume(TokenType::RightParen, "Expected ')' after condition.");
-        let exit_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
-        self.emit_pop(chunk);
-        self.statement(chunk);
-        self.emit_loop(chunk, loop_start);
-        self.patch_jump(chunk, exit_jump);
-        self.emit_pop(chunk);
-    }
-
-    fn if_statement(&mut self, chunk: &mut Chunk) {
-        self.consume(TokenType::LeftParen, "Expected '(' after 'if'.");
-        self.expression(chunk);
-        self.consume(TokenType::RightParen, "Expected ')' after condition.");
-        let then_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
-        self.emit_pop(chunk);
-        self.statement(chunk);
-        let else_jump = self.emit_jump(chunk, OpCode::OpJump);
-        self.patch_jump(chunk, then_jump);
-        self.emit_pop(chunk);
-        if self.match_token_type(TokenType::Else) {
-            self.statement(chunk);
-        }
-        self.patch_jump(chunk, else_jump);
-    }
-
-    fn block(&mut self, chunk: &mut Chunk) {
-        while !self.check(TokenType::RightBrace) && !self.check(TokenType::EOF) {
-            self.declaration(chunk);
-        }
-        self.consume(TokenType::RightBrace, "Expected '}' after block");
-    }
-
-    fn print_statement(&mut self, chunk: &mut Chunk) {
-        self.expression(chunk);
-        self.consume(TokenType::Semicolon, "Expected ';' after value.");
-        self.emit_byte(OpCode::OpPrint as u8, chunk);
-    }
-
-    fn expression_statement(&mut self, chunk: &mut Chunk) {
-        self.expression(chunk);
-        self.consume(TokenType::Semicolon, "Expected ';' after expression.");
-        self.emit_pop(chunk);
-    }
-
     // ── Pratt parser ─────────────────────────────────────────────────────────
 
     fn parse_precedence(&mut self, precedence: Precedence, chunk: &mut Chunk) {
@@ -409,5 +191,221 @@ impl Compiler {
         self.emit_pop(chunk);
         self.parse_precedence(Precedence::Or, chunk);
         self.patch_jump(chunk, end_jump);
+    }
+
+    // ── Scope & locals ──────────────────────────────────────────────────────
+
+    fn begin_scope(&mut self) {
+        self.scope_depth += 1;
+    }
+
+    fn end_scope(&mut self, chunk: &mut Chunk) {
+        self.scope_depth -= 1;
+        let mut pop_count = 0;
+        while let Some(local) = self.locals.last() {
+            if local.depth <= self.scope_depth {
+                break;
+            }
+            self.locals.pop();
+            pop_count += 1;
+        }
+        if pop_count > 0 {
+            let c = chunk.write_constant(Value::Number(pop_count as f64));
+            self.emit_bytes(OpCode::OpPopN as u8, c, chunk);
+        }
+    }
+
+    fn add_local(&mut self, token: Token) {
+        self.locals.push(Local {
+            token,
+            depth: self.scope_depth,
+            is_initialized: false,
+        });
+    }
+
+    fn declare_variable(&mut self) {
+        if self.scope_depth == 0 {
+            return;
+        }
+        let token = self.previous_token;
+        for local in self.locals.iter().rev() {
+            if local.depth < self.scope_depth {
+                break;
+            }
+            if self.same_identifier(token, local.token) {
+                self.error_at(token, "Already a variable with this name");
+                return;
+            }
+        }
+        self.add_local(token);
+    }
+
+    fn resolve_local(&mut self) -> (bool, u8) {
+        let token = self.previous_token;
+        let mut found_uninitialized = false;
+        for i in (0..self.locals.len()).rev() {
+            let local = &self.locals[i];
+            if self.same_identifier(local.token, token) {
+                if !local.is_initialized {
+                    found_uninitialized = true;
+                    continue;
+                }
+                return (true, i as u8);
+            }
+        }
+        if found_uninitialized {
+            self.error_at(token, "Can't read local variable in its own initializer");
+        }
+        (false, 0)
+    }
+
+    fn same_identifier(&self, a: Token, b: Token) -> bool {
+        a.length == b.length && self.scanner.get_lexeme(a) == self.scanner.get_lexeme(b)
+    }
+
+    // ── Variables ───────────────────────────────────────────────────────────
+
+    fn identifier_constant(&mut self, chunk: &mut Chunk) -> u8 {
+        let name = self.scanner.get_lexeme(self.previous_token);
+        let var_name = unsafe { self.vm.as_mut().unwrap().allocate_string(name) };
+        chunk.write_constant(Value::Object(var_name))
+    }
+
+    fn parse_variable(&mut self, chunk: &mut Chunk) -> u8 {
+        self.consume(TokenType::Identifier, "Expected variable name");
+        self.declare_variable();
+        if self.scope_depth > 0 {
+            return 0; // dummy value, locals are not looked up by constant index
+        }
+        self.identifier_constant(chunk)
+    }
+
+    // ── Control flow ────────────────────────────────────────────
+    fn for_statement(&mut self, chunk: &mut Chunk) {
+        self.begin_scope();
+        self.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
+        if self.match_token_type(TokenType::Semicolon) {
+        } else if self.match_token_type(TokenType::Var) {
+            self.var_declaration(chunk);
+        } else {
+            self.expression_statement(chunk);
+        }
+        let mut loop_start = chunk.count();
+        let mut is_conditional = false;
+        let mut exit_jump = 0;
+        if !self.match_token_type(TokenType::Semicolon) {
+            is_conditional = true;
+            self.expression(chunk);
+            self.consume(TokenType::Semicolon, "Expected ';' after the loop condition.");
+            exit_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
+            self.emit_pop(chunk);
+        }
+        if !self.match_token_type(TokenType::RightParen) {
+            let body_jump = self.emit_jump(chunk, OpCode::OpJump);
+            let increment_start = chunk.count();
+            self.expression(chunk);
+            self.emit_pop(chunk);
+            self.consume(TokenType::RightParen, "Expected ')' after clauses.");
+            self.emit_loop(chunk, loop_start);
+            loop_start = increment_start;
+            self.patch_jump(chunk, body_jump);
+        }
+        self.statement(chunk);
+        self.emit_loop(chunk, loop_start);
+        if is_conditional {
+            self.patch_jump(chunk, exit_jump);
+            self.emit_pop(chunk);
+        }
+        self.end_scope(chunk);
+    }
+    fn while_statement(&mut self, chunk: &mut Chunk) {
+        let loop_start = chunk.count();
+        self.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
+        self.expression(chunk);
+        self.consume(TokenType::RightParen, "Expected ')' after condition.");
+        let exit_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
+        self.emit_pop(chunk);
+        self.statement(chunk);
+        self.emit_loop(chunk, loop_start);
+        self.patch_jump(chunk, exit_jump);
+        self.emit_pop(chunk);
+    }
+
+    fn if_statement(&mut self, chunk: &mut Chunk) {
+        self.consume(TokenType::LeftParen, "Expected '(' after 'if'.");
+        self.expression(chunk);
+        self.consume(TokenType::RightParen, "Expected ')' after condition.");
+        let then_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
+        self.emit_pop(chunk);
+        self.statement(chunk);
+        let else_jump = self.emit_jump(chunk, OpCode::OpJump);
+        self.patch_jump(chunk, then_jump);
+        self.emit_pop(chunk);
+        if self.match_token_type(TokenType::Else) {
+            self.statement(chunk);
+        }
+        self.patch_jump(chunk, else_jump);
+    }
+    // ── Statements & declarations ────────────────────────────────────────────
+    fn statement(&mut self, chunk: &mut Chunk) {
+        if self.match_token_type(TokenType::Print) {
+            self.print_statement(chunk);
+        } else if self.match_token_type(TokenType::For) {
+            self.for_statement(chunk);
+        } else if self.match_token_type(TokenType::If) {
+            self.if_statement(chunk);
+        } else if self.match_token_type(TokenType::While) {
+            self.while_statement(chunk)
+        } else if self.match_token_type(TokenType::LeftBrace) {
+            self.begin_scope();
+            self.block(chunk);
+            self.end_scope(chunk);
+        } else {
+            self.expression_statement(chunk);
+        }
+    }
+    pub(super) fn declaration(&mut self, chunk: &mut Chunk) {
+        if self.match_token_type(TokenType::Var) {
+            self.var_declaration(chunk);
+        } else {
+            self.statement(chunk);
+        }
+        if self.panic_mode {
+            self.synchronize();
+        }
+    }
+
+    fn var_declaration(&mut self, chunk: &mut Chunk) {
+        let constant = self.parse_variable(chunk);
+        if self.match_token_type(TokenType::Equal) {
+            self.expression(chunk);
+        } else {
+            self.emit_byte(OpCode::OpNil as u8, chunk);
+        }
+        self.consume(TokenType::Semicolon, "Expected ';' after variable declaration.");
+        if self.scope_depth > 0 {
+            self.locals.last_mut().unwrap().is_initialized = true;
+            return;
+        }
+        self.emit_bytes(OpCode::OpDefineGlobal as u8, constant, chunk);
+    }
+
+    fn block(&mut self, chunk: &mut Chunk) {
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::EOF) {
+            self.declaration(chunk);
+        }
+        self.consume(TokenType::RightBrace, "Expected '}' after block");
+    }
+
+    fn print_statement(&mut self, chunk: &mut Chunk) {
+        self.expression(chunk);
+        self.consume(TokenType::Semicolon, "Expected ';' after value.");
+        self.emit_byte(OpCode::OpPrint as u8, chunk);
+    }
+
+    fn expression_statement(&mut self, chunk: &mut Chunk) {
+        self.expression(chunk);
+        self.consume(TokenType::Semicolon, "Expected ';' after expression.");
+        self.emit_pop(chunk);
     }
 }
