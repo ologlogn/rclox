@@ -10,9 +10,9 @@ use crate::chunk::Chunk;
 use crate::compiler::Compiler;
 use crate::scanner::Scanner;
 use crate::vm::{InterpretResult, Vm};
-use std::io::Write;
+use rustyline::{DefaultEditor, error::ReadlineError};
 use std::process::exit;
-use std::{env, fs, io};
+use std::{env, fs};
 
 fn main() {
     let mut vm = Vm::new();
@@ -42,19 +42,23 @@ pub fn interpret(source: String, vm: &mut Vm) -> InterpretResult {
 }
 
 fn run_prompt(vm: &mut Vm) {
-    let stdin = io::stdin();
+    let mut rl = DefaultEditor::new().expect("failed to init editor");
     loop {
-        print!("> ");
-        io::stdout().flush().unwrap();
-        let mut line = String::new();
-        let bytes_read = stdin.read_line(&mut line).unwrap();
-        if bytes_read == 0 {
-            break;
+        match rl.readline("> ") {
+            Ok(line) => {
+                let cmd = line.trim();
+                if cmd.is_empty() {
+                    continue;
+                }
+                rl.add_history_entry(cmd).ok();
+                interpret(cmd.to_string(), vm);
+            }
+            Err(ReadlineError::Interrupted | ReadlineError::Eof) => break,
+            Err(err) => {
+                eprintln!("error: {err}");
+                break;
+            }
         }
-        if line.is_empty() {
-            continue;
-        }
-        interpret(line, vm);
     }
 }
 

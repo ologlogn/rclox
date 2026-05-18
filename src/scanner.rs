@@ -106,7 +106,17 @@ impl Scanner {
             'o' => self.check_keyword(1, "r", TokenType::Or),
             'p' => self.check_keyword(1, "rint", TokenType::Print),
             'r' => self.check_keyword(1, "eturn", TokenType::Return),
-            's' => self.check_keyword(1, "uper", TokenType::Super),
+            's' => {
+                if self.current - self.start > 1 {
+                    match self.char_at_nth(self.start, 1) {
+                        'u' => self.check_keyword(2, "per", TokenType::Super),
+                        'w' => self.check_keyword(2, "itch", TokenType::Switch),
+                        _ => TokenType::Identifier,
+                    }
+                } else {
+                    TokenType::Identifier
+                }
+            }
             'v' => self.check_keyword(1, "ar", TokenType::Var),
             'w' => self.check_keyword(1, "hile", TokenType::While),
             'b' => self.check_keyword(1, "reak", TokenType::Break),
@@ -115,12 +125,13 @@ impl Scanner {
                     match self.char_at_nth(self.start, 1) {
                         'l' => self.check_keyword(2, "ass", TokenType::Class),
                         'o' => self.check_keyword(2, "ntinue", TokenType::Continue),
-                        _ => TokenType::Identifier
+                        'a' => self.check_keyword(2, "se", TokenType::Case),
+                        _ => TokenType::Identifier,
                     }
                 } else {
                     TokenType::Identifier
                 }
-            },
+            }
             'f' => {
                 if self.current - self.start > 1 {
                     match self.char_at_nth(self.start, 1) {
