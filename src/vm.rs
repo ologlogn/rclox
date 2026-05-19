@@ -37,21 +37,34 @@ impl Vm {
         self.call_stack.last_mut().unwrap()
     }
     fn current_chunk(&mut self) -> &mut Chunk {
-        unsafe {
-            match &mut (*self.current_frame().function).obj_type {
-                ObjectType::Function(func) => &mut func.chunk,
-                _ => unreachable!(),
-            }
-        }
-    }
-    fn push_frame(&mut self, function: *mut Object, arg_count: usize) {
-        let stack_base = self.stack.len() - arg_count - 1;
-        self.call_stack.push(CallFrame { function, ip: 0, stack_base });
+        unsafe { &mut (*(self.current_frame().function)).chunk }
     }
     pub fn interpret(&mut self, function: *mut Object) -> Result<(), InterpretResult> {
         self.stack.push(Value::Object(function));
-        self.push_frame(function, 0);
+        unsafe {
+            match &mut (*function).obj_type {
+                ObjectType::Function(func) => self.call(func, 0)?,
+                _ => unreachable!(),
+            }
+        }
         self.run()
+    }
+
+    pub fn call(&mut self, function: &mut FunctionObject, arg_count: usize) -> Result<(), InterpretResult> {
+        if arg_count != function.arity {
+            self.runtime_error(format!(
+                "Expected {} but got {} arguments for function {}",
+                arg_count, function.arity, function.name
+            ).as_str());
+            return Err(InterpretResult::InterpretRuntimeError);
+        }
+        let frame = CallFrame {
+            function,
+            ip: 0,
+            stack_base: self.stack.len() - arg_count - 1,
+        };
+        self.call_stack.push(frame);
+        Ok(())
     }
 
     // ── Bytecode reading ─────────────────────────────────────────────────────
@@ -155,8 +168,32 @@ impl Vm {
         loop {
             let opcode = OpCode::try_from(self.read_byte()).unwrap();
             match opcode {
+                // ── Functions ─────────────────────────────────────────────
+                OpCode::OpCall => {
+                    let arg_count = self.read_byte() as usize;
+                    let fun_value = self.stack[self.stack.len() - arg_count - 1].clone();
+                    if let Value::Object(function) = fun_value {
+                        unsafe {
+                            match &mut (*function).obj_type {
+                                ObjectType::Function(function_obj) => self.call(function_obj, arg_count)?,
+                                _ => {
+                                    self.runtime_error("Invalid function type");
+                                    return Err(InterpretResult::InterpretRuntimeError);
+                                }
+                            }
+                        }
+                    }
+                }
                 // ── Control flow ─────────────────────────────────────────────
-                OpCode::OpReturn => return Ok(()),
+                OpCode::OpReturn => {
+                    let result = self.stack.pop().unwrap_or(Value::Nil);
+                    let frame = self.call_stack.pop().expect("call stack underflow");
+                    if self.call_stack.is_empty() {
+                        return Ok(());
+                    }
+                    self.stack.truncate(frame.stack_base);
+                    self.stack.push(result);
+                }
                 OpCode::OpJumpIfFalse => {
                     let offset = self.read_short();
                     if self.peek_top().is_falsey() {
@@ -265,10 +302,18 @@ impl Vm {
     // ── Error handling ───────────────────────────────────────────────────────
 
     fn runtime_error(&mut self, message: &str) {
-        let ip = self.current_frame().ip;
-        eprintln!("[line {}] Runtime error: {}", self.current_chunk().get_line(ip - 1), message);
-        self.current_frame().ip = 0;
+        eprintln!("{}", message);
+        for frame in self.call_stack.iter().rev() {
+            let func = unsafe { &*frame.function };
+            let line = func.chunk.get_line(frame.ip - 1);
+            if func.name.is_empty() {
+                eprintln!("[line {}] in script", line);
+            } else {
+                eprintln!("[line {}] in {}()", line, func.name);
+            }
+        }
         self.stack.clear();
+        self.call_stack.clear();
     }
 
     // ── Memory ───────────────────────────────────────────────────────────────

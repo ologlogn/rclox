@@ -60,6 +60,7 @@ impl Compiler {
     }
 
     pub(crate) fn end_compiler(&mut self) -> Option<*mut Object> {
+        self.emit_byte(OpCode::OpNil as u8);
         self.emit_return();
         println!("{:?}", self.current_chunk());
         if !self.parser.had_error {

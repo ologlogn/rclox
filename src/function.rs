@@ -1,5 +1,4 @@
 use crate::chunk::Chunk;
-use crate::value::{Object};
 
 pub struct FunctionObject {
     pub arity: usize,
@@ -16,13 +15,14 @@ impl FunctionObject {
         }
     }
 }
+#[derive(PartialEq, Debug)]
 pub enum FunctionType {
     TypeFunction,
     TypeScript,
 }
 
 pub struct CallFrame {
-    pub function: *mut Object,
+    pub function: *mut FunctionObject,
     pub ip: usize,
     pub stack_base: usize,
 }

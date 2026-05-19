@@ -1,0 +1,49 @@
+// 1. basic call
+fun greet() {
+  print "hello";
+}
+greet();
+
+// 2. return value (implicit nil)
+fun nothing() {}
+print nothing();
+
+// 3. params
+fun add(a, b) {
+  print a + b;
+}
+add(3, 4);
+
+// 4. recursion — fibonacci
+fun fib(n) {
+  if (n <= 1) return n;
+  return fib(n - 1) + fib(n - 2);
+}
+print fib(10);
+
+// 5. closure over global
+var counter = 0;
+fun inc() {
+  counter = counter + 1;
+}
+inc();
+inc();
+inc();
+print counter;
+
+// 6. nested calls
+fun double(x) { return x * 2; }
+fun quad(x)   { return double(double(x)); }
+print quad(5);
+
+// 7. local vars inside function
+fun locals() {
+  var x = 10;
+  var y = 20;
+  print x + y;
+}
+locals();
+
+// 8. arity error — should print error + stack trace, not panic
+fun exact(a, b) { print a + b; }
+exact(1, 2, 3);

@@ -7,11 +7,9 @@ mod token;
 mod value;
 mod vm;
 
-use crate::chunk::Chunk;
 use crate::compiler::Compiler;
-use crate::function::{FunctionObject, FunctionType};
+use crate::function::{FunctionType};
 use crate::scanner::Scanner;
-use crate::value::Object;
 use crate::vm::{InterpretResult, Vm};
 use rustyline::config::Configurer;
 use rustyline::{DefaultEditor, EditMode, error::ReadlineError};
@@ -46,8 +44,6 @@ pub fn interpret(source: String, vm: &mut Vm) -> InterpretResult {
 fn run_prompt(vm: &mut Vm) {
     let mut rl = DefaultEditor::new().expect("failed to init editor");
     rl.set_edit_mode(EditMode::Vi);
-    let chunk = Chunk::new();
-    let init_function = vm.allocate_function(FunctionObject::new(chunk, 0, ""));
     loop {
         match rl.readline("> ") {
             Ok(line) => {

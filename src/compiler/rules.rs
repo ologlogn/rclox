@@ -57,7 +57,7 @@ impl ParseRule {
 
 pub fn get_rule(token_type: TokenType) -> ParseRule {
     match token_type {
-        TokenType::LeftParen => ParseRule::new(Some(Compiler::grouping), None, Precedence::None),
+        TokenType::LeftParen => ParseRule::new(Some(Compiler::grouping), Some(Compiler::call), Precedence::Call),
         TokenType::Bang => ParseRule::new(Some(Compiler::unary), None, Precedence::None),
         TokenType::Minus => ParseRule::new(Some(Compiler::unary), Some(Compiler::binary), Precedence::Term),
         TokenType::Plus => ParseRule::new(None, Some(Compiler::binary), Precedence::Term),

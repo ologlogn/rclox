@@ -251,6 +251,21 @@ impl Compiler {
         }
     }
 
+    pub(super) fn call(&mut self) {
+        let mut arguments = 0;
+        if !self.parser.check(TokenType::RightParen) {
+            loop {
+                self.expression();
+                arguments += 1;
+                if !self.parser.match_token_type(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        self.parser.consume(TokenType::RightParen, "Expected ')'");
+        self.emit_bytes(OpCode::OpCall as u8, arguments);
+    }
+
     // ── Scope & locals ────────────────────────────────────────────────────────
 
     fn discard_locals(&mut self, target_depth: usize, modify_compiler_state: bool, with_value: bool) {
@@ -520,7 +535,20 @@ impl Compiler {
             self.if_statement();
         } else if self.parser.match_token_type(TokenType::While) {
             self.while_statement();
-        } else if self.parser.match_token_type(TokenType::LeftBrace) {
+        } else if self.parser.match_token_type(TokenType::Return) {
+            if self.frames.last().unwrap().function_type == FunctionType::TypeScript {
+                self.parser.error_at(self.parser.previous_token, "Can't use return outside a function")
+            }
+            if self.parser.match_token_type(TokenType::Semicolon) {
+                self.emit_byte(OpCode::OpNil as u8);
+                self.emit_return();
+            } else {
+                self.expression();
+                self.parser.consume(TokenType::Semicolon, "Expect ';' after return value.");
+                self.emit_return();
+            }
+        }
+        else if self.parser.match_token_type(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
             self.end_scope(false);
