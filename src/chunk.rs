@@ -31,6 +31,7 @@ pub enum OpCode {
     OpJump,
     OpLoop,
     OpDup,
+    OpTuckN,
 }
 
 impl TryFrom<u8> for OpCode {
@@ -64,6 +65,7 @@ impl TryFrom<u8> for OpCode {
             23 => Ok(OpCode::OpJump),
             24 => Ok(OpCode::OpLoop),
             25 => Ok(OpCode::OpDup),
+            26 => Ok(OpCode::OpTuckN),
             _ => Err(format!("Unknown opcode: {}", byte)),
         }
     }
@@ -147,6 +149,7 @@ impl Chunk {
             OpCode::OpGetLocal => self.byte_instruction(f, "OP_GET_LOCAL", offset),
             OpCode::OpSetLocal => self.byte_instruction(f, "OP_SET_LOCAL", offset),
             OpCode::OpPopN => self.constant_instruction(f, "OP_POP_N", offset),
+            OpCode::OpTuckN => self.constant_instruction(f, "OP_TUCK_N", offset),
             OpCode::OpJumpIfFalse => self.jump_instruction(f, "OP_JUMP_IF_FALSE", 1, offset),
             OpCode::OpJump => self.jump_instruction(f, "OP_JUMP", 1, offset),
             OpCode::OpLoop => self.jump_instruction(f, "OP_LOOP", -1, offset),

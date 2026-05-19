@@ -1,0 +1,229 @@
+// Test 1: no yield -> nil
+var result = switch (1) {
+  case 1 => { print "side effect 1"; }
+  default => { print "side effect default"; }
+};
+print "Test 1: ";
+print (result == nil);  // expected: true
+
+// Test 2: yield simple value
+result = switch (2) {
+  case 1 => { yield 10; }
+  case 2 => { yield 20; }
+  default => { yield 0; }
+};
+print "Test 2: ";
+print result;  // expected: 20
+
+// Test 3: yield after statements
+result = switch (1) {
+  case 1 => {
+    var a = 10;
+    var b = 20;
+    yield a + b;
+  }
+  default => { yield 0; }
+};
+print "Test 3: ";
+print result;  // expected: 30
+
+// Test 4: empty block -> nil
+result = switch (1) {
+  case 1 => {}
+  default => {}
+};
+print "Test 4: ";
+print (result == nil);  // expected: true
+
+// Test 5: yield nil explicitly
+result = switch (1) {
+  case 1 => { yield nil; }
+  default => { yield 0; }
+};
+print "Test 5: ";
+print (result == nil);  // expected: true
+
+// Test 6: yield with print side effects
+var log = 0;
+result = switch (2) {
+  case 1 => {
+    print "case 1";
+    yield 100;
+  }
+  case 2 => {
+    print "case 2";
+    yield 200;
+  }
+  default => {
+    print "default";
+    yield 0;
+  }
+};
+print "Test 6: ";
+print result;  // expected: 200
+
+// Test 7: yield arithmetic expression
+result = switch (3) {
+  case 1 => { yield 1 + 1; }
+  case 2 => { yield 2 * 2; }
+  case 3 => { yield 10 + 20 + 30; }
+  default => { yield 0; }
+};
+print "Test 7: ";
+print result;  // expected: 60
+
+// Test 8: yield string concat
+result = switch (1) {
+  case 1 => {
+    var a = "Hello";
+    var b = ", World!";
+    yield a + b;
+  }
+  default => { yield "none"; }
+};
+print "Test 8: ";
+print result;  // expected: Hello, World!
+
+// Test 9: nested switch with blocks
+var x = 2;
+var y = 1;
+result = switch (x) {
+  case 1 => { yield "x1"; }
+  case 2 => {
+    var inner = switch (y) {
+      case 1 => { yield "y1"; }
+      case 2 => { yield "y2"; }
+      default => { yield "yX"; }
+    };
+    yield inner;
+  }
+  default => { yield "xX"; }
+};
+print "Test 9: ";
+print result;  // expected: y1
+
+// Test 10: switch in while loop with blocks
+var i = 1;
+var sum = 0;
+while (i <= 4) {
+  sum = sum + switch (i) {
+    case 1 => { yield 10; }
+    case 2 => { yield 20; }
+    case 3 => { yield 30; }
+    case 4 => { yield 40; }
+    default => { yield 0; }
+  };
+  i = i + 1;
+}
+print "Test 10: ";
+print sum;  // expected: 100
+
+// Test 11: yield result of another switch
+result = switch (1) {
+  case 1 => {
+    var inner = switch (2) {
+      case 2 => { yield 42; }
+      default => { yield 0; }
+    };
+    yield inner;
+  }
+  default => { yield 0; }
+};
+print "Test 11: ";
+print result;  // expected: 42
+
+// Test 12: default with no yield -> nil
+result = switch (99) {
+  case 1 => { yield "one"; }
+  case 2 => { yield "two"; }
+  default => {}
+};
+print "Test 12: ";
+print (result == nil);  // expected: true
+
+// Test 13: yield in default arm
+result = switch (99) {
+  case 1 => { yield "one"; }
+  default => {
+    var msg = "caught";
+    yield msg;
+  }
+};
+print "Test 13: ";
+print result;  // expected: caught
+
+// Test 14: block with many locals, yield last
+result = switch (1) {
+  case 1 => {
+    var a = 1;
+    var b = 2;
+    var c = 3;
+    var d = 4;
+    var e = 5;
+    yield a + b + c + d + e;
+  }
+  default => { yield 0; }
+};
+print "Test 14: ";
+print result;  // expected: 15
+
+// Test 15: switch result used in expression
+var computed = 100 + switch (2) {
+  case 1 => { yield 1; }
+  case 2 => { yield 3; }
+  default => { yield 0; }
+} + 1000;
+print "Test 15: ";
+print computed;  // expected: 1103
+
+// Test 16: switch on nil with block
+result = switch (nil) {
+  case nil => {
+    var msg = "was-nil";
+    yield msg;
+  }
+  case 1 => { yield "one"; }
+  default => { yield "other"; }
+};
+print "Test 16: ";
+print result;  // expected: was-nil
+
+// Test 17: switch on bool with block
+result = switch (true) {
+  case false => { yield "no"; }
+  case true  => { yield "yes"; }
+  default    => { yield "maybe"; }
+};
+print "Test 17: ";
+print result;  // expected: yes
+
+// Test 18: multiple switches in sequence, stack drift check
+var p1 = switch (1) { case 1 => { yield 100; } default => { yield 0; } };
+var p2 = switch (2) { case 2 => { yield 200; } default => { yield 0; } };
+var p3 = switch (99){ case 1 => { yield 999; } default => { yield 0; } };
+var p4 = switch (nil){ case nil => { yield 50; } default => { yield 0; } };
+print "Test 18: ";
+print (p1 + p2 + p3 + p4);  // expected: 350
+
+// Test 19: yield inside deeply nested block locals
+result = switch (1) {
+  case 1 => {
+    var outer = 10;
+    var inner = switch (2) {
+      case 2 => {
+        var a = outer + 5;
+        yield a;
+      }
+      default => { yield 0; }
+    };
+    yield outer + inner;
+  }
+  default => { yield 0; }
+};
+print "Test 19: ";
+print result;  // expected: 25
+
+// Test 20: grand total
+print "Test 20 (grand total): ";
+print (result + computed + sum + p1 + p2 + p3 + p4);
+// expected: 25 + 1103 + 100 + 100 + 200 + 0 + 50 = 1578

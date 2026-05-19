@@ -121,6 +121,7 @@ impl Scanner {
             'w' => self.check_keyword(1, "hile", TokenType::While),
             'b' => self.check_keyword(1, "reak", TokenType::Break),
             'd' => self.check_keyword(1, "efault", TokenType::Default),
+            'y' => self.check_keyword(1, "ield", TokenType::Yield),
             'c' => {
                 if self.current - self.start > 1 {
                     match self.char_at_nth(self.start, 1) {

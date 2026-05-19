@@ -53,6 +53,7 @@ pub enum TokenType {
     Switch,
     Case,
     Default,
+    Yield,
     Error(&'static str), // a constant message at the compile time
     EOF,
 }

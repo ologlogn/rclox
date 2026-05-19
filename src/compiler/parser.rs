@@ -206,7 +206,7 @@ impl Compiler {
             let fail_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
             self.emit_pop(chunk); // pop bool
             self.emit_pop(chunk); // pop switch value
-            self.expression(chunk);
+            self.case_block(chunk);
             let end_jump = self.emit_jump(chunk, OpCode::OpJump);
             end_jumps.push(end_jump);
             self.patch_jump(chunk, fail_jump);
@@ -215,13 +215,12 @@ impl Compiler {
         self.emit_pop(chunk); // pop switch value
         self.consume(TokenType::Default, "Expected default");
         self.consume(TokenType::EqualGreater, "Expected '=>'");
-        self.expression(chunk);
+        self.case_block(chunk);
         self.consume(TokenType::RightBrace, "Expected '}'");
         for jump in end_jumps {
             self.patch_jump(chunk, jump);
         }
     }
-
 
     // ── Scope & locals ──────────────────────────────────────────────────────
 
@@ -229,9 +228,9 @@ impl Compiler {
         self.scope_depth += 1;
     }
 
-    fn end_scope(&mut self, chunk: &mut Chunk) {
+    fn end_scope(&mut self, with_value: bool, chunk: &mut Chunk) {
         self.scope_depth -= 1;
-        self.discard_locals(self.scope_depth, true, chunk);
+        self.discard_locals(self.scope_depth, true, with_value, chunk);
     }
     fn add_local(&mut self, token: Token) {
         self.locals.push(Local {
@@ -239,23 +238,6 @@ impl Compiler {
             depth: self.scope_depth,
             is_initialized: false,
         });
-    }
-
-    fn declare_variable(&mut self) {
-        if self.scope_depth == 0 {
-            return;
-        }
-        let token = self.previous_token;
-        for local in self.locals.iter().rev() {
-            if local.depth < self.scope_depth {
-                break;
-            }
-            if self.same_identifier(token, local.token) {
-                self.error_at(token, "Already a variable with this name");
-                return;
-            }
-        }
-        self.add_local(token);
     }
 
     fn resolve_local(&mut self) -> (bool, u8) {
@@ -289,16 +271,23 @@ impl Compiler {
         chunk.write_constant(Value::Object(var_name))
     }
 
-    fn parse_variable(&mut self, chunk: &mut Chunk) -> u8 {
-        self.consume(TokenType::Identifier, "Expected variable name");
-        self.declare_variable();
-        if self.scope_depth > 0 {
-            return 0; // dummy value, locals are not looked up by constant index
-        }
-        self.identifier_constant(chunk)
-    }
-
     // ── Control flow ────────────────────────────────────────────
+    fn case_block(&mut self, chunk: &mut Chunk) {
+        self.begin_scope();
+        self.consume(TokenType::LeftBrace, "Expected '{' after case.");
+        while !self.check(TokenType::Yield) && !self.check(TokenType::EOF) && !self.check(TokenType::RightBrace) {
+            self.declaration(chunk);
+        }
+        if self.check(TokenType::Yield) {
+            self.advance(); // consume 'yield'
+            self.expression(chunk); // leaves value on stack
+            self.consume(TokenType::Semicolon, "Expected ';' after yield expression.");
+        } else {
+            self.emit_byte(OpCode::OpNil as u8, chunk); // add Nil
+        }
+        self.consume(TokenType::RightBrace, "Expected '}'.");
+        self.end_scope(true, chunk); // TuckN
+    }
     fn for_statement(&mut self, chunk: &mut Chunk) {
         self.begin_scope();
         self.jumps.push((self.scope_depth, 0, Vec::new()));
@@ -343,7 +332,7 @@ impl Compiler {
         for break_ in breaks {
             self.patch_jump(chunk, break_);
         }
-        self.end_scope(chunk);
+        self.end_scope(false, chunk);
     }
     fn while_statement(&mut self, chunk: &mut Chunk) {
         let loop_start = chunk.count();
@@ -379,7 +368,7 @@ impl Compiler {
         self.patch_jump(chunk, else_jump);
     }
 
-    fn discard_locals(&mut self, target_depth: usize, modify_compiler_state: bool, chunk: &mut Chunk) {
+    fn discard_locals(&mut self, target_depth: usize, modify_compiler_state: bool, with_value: bool, chunk: &mut Chunk) {
         let mut pop_count = 0;
         for local in self.locals.iter().rev() {
             if local.depth <= target_depth {
@@ -393,14 +382,17 @@ impl Compiler {
             }
         }
         if pop_count > 0 {
-            let c = chunk.write_constant(Value::Number(pop_count as f64));
-            self.emit_bytes(OpCode::OpPopN as u8, c, chunk);
+            if with_value {
+                self.emit_bytes(OpCode::OpTuckN as u8, pop_count as u8, chunk);
+            } else {
+                self.emit_bytes(OpCode::OpPopN as u8, pop_count as u8, chunk);
+            }
         }
     }
     fn break_statement(&mut self, chunk: &mut Chunk) {
         self.consume(TokenType::Semicolon, "Expected ';' after break.");
         if let Some((loop_depth, start, mut jump)) = self.jumps.pop() {
-            self.discard_locals(loop_depth, false, chunk);
+            self.discard_locals(loop_depth, false, false, chunk);
             let emit_jump = self.emit_jump(chunk, OpCode::OpJump);
             jump.push(emit_jump);
             self.jumps.push((loop_depth, start, jump));
@@ -411,7 +403,7 @@ impl Compiler {
     fn continue_statement(&mut self, chunk: &mut Chunk) {
         self.consume(TokenType::Semicolon, "Expected ';' after continue.");
         if let Some((loop_depth, start, jump)) = self.jumps.pop() {
-            self.discard_locals(loop_depth, false, chunk);
+            self.discard_locals(loop_depth, false, false, chunk);
             self.emit_loop(chunk, start);
             self.jumps.push((loop_depth, start, jump));
         } else {
@@ -435,7 +427,7 @@ impl Compiler {
         } else if self.match_token_type(TokenType::LeftBrace) {
             self.begin_scope();
             self.block(chunk);
-            self.end_scope(chunk);
+            self.end_scope(false, chunk);
         } else {
             self.expression_statement(chunk);
         }
@@ -452,18 +444,40 @@ impl Compiler {
     }
 
     fn var_declaration(&mut self, chunk: &mut Chunk) {
-        let constant = self.parse_variable(chunk);
+        self.consume(TokenType::Identifier, "Expected variable name");
+        let token = self.previous_token;
+        let constant = if self.scope_depth == 0 {
+            self.identifier_constant(chunk)
+        } else {
+            0
+        };
+
         if self.match_token_type(TokenType::Equal) {
             self.expression(chunk);
         } else {
             self.emit_byte(OpCode::OpNil as u8, chunk);
         }
         self.consume(TokenType::Semicolon, "Expected ';' after variable declaration.");
+
         if self.scope_depth > 0 {
+            self.declare_variable_late(token);
             self.locals.last_mut().unwrap().is_initialized = true;
             return;
         }
         self.emit_bytes(OpCode::OpDefineGlobal as u8, constant, chunk);
+    }
+
+    fn declare_variable_late(&mut self, token: Token) {
+        for local in self.locals.iter().rev() {
+            if local.depth < self.scope_depth {
+                break;
+            }
+            if self.same_identifier(token, local.token) {
+                self.error_at(token, "Already a variable with this name");
+                return;
+            }
+        }
+        self.add_local(token);
     }
 
     fn block(&mut self, chunk: &mut Chunk) {
