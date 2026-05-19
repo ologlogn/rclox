@@ -163,9 +163,8 @@ impl Vm {
                     self.stack.pop();
                 }
                 OpCode::OpPopN => {
-                    if let Value::Number(n) = self.read_constant(chunk) {
-                        self.stack.truncate(self.stack.len() - n as usize);
-                    }
+                    let to_pop = self.read_byte(chunk);
+                    self.stack.truncate(self.stack.len() - to_pop as usize);
                 }
                 OpCode::OpDup => {
                     let v1 = self.peek_top();
@@ -173,9 +172,8 @@ impl Vm {
                 }
                 OpCode::OpTuckN => {
                     let result = self.stack.pop().unwrap();
-                    if let Value::Number(n) = self.read_constant(chunk) {
-                        self.stack.truncate(self.stack.len() - n as usize);
-                    }
+                    let to_pop = self.read_byte(chunk);
+                    self.stack.truncate(self.stack.len() - to_pop as usize);
                     self.stack.push(result);
                 }
 
