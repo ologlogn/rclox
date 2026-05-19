@@ -167,6 +167,10 @@ impl Vm {
                         self.stack.truncate(self.stack.len() - n as usize);
                     }
                 }
+                OpCode::OpDup=> {
+                    let v1 = self.peek_top();
+                    self.stack.push(v1.clone());
+                }
 
                 // ── Globals ──────────────────────────────────────────────────
                 OpCode::OpDefineGlobal => {

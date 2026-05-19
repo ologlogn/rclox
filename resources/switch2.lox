@@ -1,0 +1,125 @@
+
+// Test 1: Basic matching (first case)
+var x = 1;
+var result = switch (x) {
+  case 1 => "one"
+  case 2 => "two"
+  default => "other"
+};
+print "Test 1 (first case): ";
+print result;  // expected: "one"
+
+// Test 2: Basic matching (middle case)
+x = 2;
+result = switch (x) {
+  case 1 => "one"
+  case 2 => "two"
+  case 3 => "three"
+  default => "other"
+};
+print "Test 2 (middle case): ";
+print result;  // expected: "two"
+
+// Test 3: Default path
+x = 99;
+result = switch (x) {
+  case 1 => "one"
+  case 2 => "two"
+  default => "other"
+};
+print "Test 3 (default): ";
+print result;  // expected: "other"
+
+// Test 4: Every branch returns a value (including nil)
+x = 3;
+result = switch (x) {
+  case 1 => 10
+  case 2 => 20
+  default => nil
+};
+print "Test 4 (nil result): ";
+print result;  // expected: nil
+print "Test 4 (is nil): ";
+print (result == nil);  // expected: true
+
+// Test 5: Nested switches
+x = 1;
+var y = 10;
+result = switch (x) {
+  case 1 => switch (y) {
+    case 10 => "a"
+    case 20 => "b"
+    default => "c"
+  }
+  case 2 => switch (y) {
+    case 10 => "d"
+    default => "e"
+  }
+  default => "f"
+};
+print "Test 5 (nested): ";
+print result;  // expected: "a"
+
+// Test 6: Switch used in an expression
+x = 2;
+result = 10 + (switch (x) {
+  case 1 => 1
+  case 2 => 5
+  default => 0
+});
+print "Test 6 (in expression): ";
+print result;  // expected: 15
+
+// Test 7: No case matches falls to default
+x = 999;
+result = switch (x) {
+  case 1 => "one"
+  case 2 => "two"
+  default => "other"
+};
+print "Test 7 (no match default): ";
+print result;  // expected: "other"
+
+// Test 8: Switch with complex expressions in arms
+x = 1;
+result = switch (x) {
+  case 1 => 10 + 20
+  case 2 => "a" + "b"
+  default => nil
+};
+print "Test 8 (complex arms): ";
+print result;  // expected: 30
+
+y = switch (x) {
+  case 1 => nil
+  case 2 => 100
+  default => 200
+};
+print "Test 8 (nil arm): ";
+print (y == nil);  // expected: true
+
+// Test 9: Multiple switches in sequence (stack drift check)
+var a = switch (1) {
+  case 1 => 10
+  default => 0
+};
+var b = switch (2) {
+  case 1 => 20
+  case 2 => 30
+  default => 0
+};
+var c = switch (3) {
+  default => 40
+};
+print "Test 9 (multiple switches): ";
+print (a + b + c);  // expected: 80
+
+// Test 10: Switch with nil switch value
+x = nil;
+result = switch (x) {
+  case nil => "is-nil"
+  case 1 => "one"
+  default => "other"
+};
+print "Test 10 (nil switch value): ";
+print result;  // expected: "is-nil"

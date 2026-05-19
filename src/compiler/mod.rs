@@ -20,6 +20,7 @@ pub struct Compiler {
     vm: *mut Vm,
     //loop jump depth in the program scope, starting offset of loop, jumps in the loop
     jumps: Vec<(usize,usize,Vec<usize>)>,
+    can_assign: bool,
 }
 
 pub struct Local {
@@ -42,6 +43,7 @@ impl Compiler {
             scanner,
             vm: vm as *mut Vm,
             jumps: vec![],
+            can_assign: false,
         }
     }
 

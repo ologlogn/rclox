@@ -20,6 +20,7 @@ pub enum TokenType {
     BangEqual,
     Equal,
     EqualEqual,
+    EqualGreater,
     Greater,
     GreaterEqual,
     Less,
@@ -51,6 +52,7 @@ pub enum TokenType {
     Continue,
     Switch,
     Case,
+    Default,
     Error(&'static str), // a constant message at the compile time
     EOF,
 }

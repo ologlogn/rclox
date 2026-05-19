@@ -10,9 +10,10 @@ use crate::chunk::Chunk;
 use crate::compiler::Compiler;
 use crate::scanner::Scanner;
 use crate::vm::{InterpretResult, Vm};
-use rustyline::{DefaultEditor, error::ReadlineError};
+use rustyline::{DefaultEditor, error::ReadlineError, EditMode};
 use std::process::exit;
 use std::{env, fs};
+use rustyline::config::Configurer;
 
 fn main() {
     let mut vm = Vm::new();
@@ -43,6 +44,7 @@ pub fn interpret(source: String, vm: &mut Vm) -> InterpretResult {
 
 fn run_prompt(vm: &mut Vm) {
     let mut rl = DefaultEditor::new().expect("failed to init editor");
+    rl.set_edit_mode(EditMode::Vi);
     loop {
         match rl.readline("> ") {
             Ok(line) => {

@@ -120,6 +120,7 @@ impl Scanner {
             'v' => self.check_keyword(1, "ar", TokenType::Var),
             'w' => self.check_keyword(1, "hile", TokenType::While),
             'b' => self.check_keyword(1, "reak", TokenType::Break),
+            'd' => self.check_keyword(1, "efault", TokenType::Default),
             'c' => {
                 if self.current - self.start > 1 {
                     match self.char_at_nth(self.start, 1) {
@@ -205,6 +206,8 @@ impl Scanner {
                 '=' => {
                     if self.if_next_char_then_advance('=') {
                         self.make_token(TokenType::EqualEqual)
+                    } else if self.if_next_char_then_advance('>') {
+                        self.make_token(TokenType::EqualGreater)
                     } else {
                         self.make_token(TokenType::Equal)
                     }

@@ -81,9 +81,10 @@ impl Compiler {
 
     fn parse_precedence(&mut self, precedence: Precedence, chunk: &mut Chunk) {
         self.advance();
-        let can_assign = precedence <= Precedence::Assignment;
+        let current_can_assign = self.can_assign;
+        self.can_assign = precedence <= Precedence::Assignment;
         match get_rule(self.previous_token.token_type).prefix {
-            Some(prefix_fn) => prefix_fn(self, can_assign, chunk),
+            Some(prefix_fn) => prefix_fn(self, chunk),
             None => {
                 self.error_at(self.previous_token, "Expected expression.");
                 return;
@@ -92,12 +93,13 @@ impl Compiler {
         while precedence <= get_rule(self.current_token.token_type).precedence {
             self.advance();
             if let Some(infix_fn) = get_rule(self.previous_token.token_type).infix {
-                infix_fn(self, can_assign, chunk);
+                infix_fn(self, chunk);
             }
         }
-        if can_assign && self.match_token_type(TokenType::Equal) {
+        if self.can_assign && self.match_token_type(TokenType::Equal) {
             self.error_at(self.previous_token, "Invalid assignment target.");
         }
+        self.can_assign = current_can_assign;
     }
 
     pub(super) fn expression(&mut self, chunk: &mut Chunk) {
@@ -106,20 +108,20 @@ impl Compiler {
 
     // ── Parse functions (prefix / infix) ─────────────────────────────────────
 
-    pub(super) fn number(&mut self, _can_assign: bool, chunk: &mut Chunk) {
+    pub(super) fn number(&mut self, chunk: &mut Chunk) {
         let lexeme = self.scanner.get_lexeme(self.previous_token);
         let val = Value::Number(lexeme.parse().unwrap());
         self.emit_constant(val, chunk);
     }
 
-    pub(super) fn string(&mut self, _can_assign: bool, chunk: &mut Chunk) {
+    pub(super) fn string(&mut self, chunk: &mut Chunk) {
         let lexeme = self.scanner.get_lexeme(self.previous_token);
         let string_value = lexeme[1..lexeme.len() - 1].to_string();
         let obj_ptr = unsafe { self.vm.as_mut().unwrap().allocate_string(string_value.as_str()) };
         self.emit_constant(Value::Object(obj_ptr), chunk);
     }
 
-    pub(super) fn variable(&mut self, can_assign: bool, chunk: &mut Chunk) {
+    pub(super) fn variable(&mut self, chunk: &mut Chunk) {
         let (is_local, local_idx) = self.resolve_local();
         let (get_op, set_op, arg) = if is_local {
             (OpCode::OpGetLocal, OpCode::OpSetLocal, local_idx)
@@ -127,7 +129,7 @@ impl Compiler {
             let global_idx = self.identifier_constant(chunk);
             (OpCode::OpGetGlobal, OpCode::OpSetGlobal, global_idx)
         };
-        if can_assign && self.match_token_type(TokenType::Equal) {
+        if self.can_assign && self.match_token_type(TokenType::Equal) {
             self.expression(chunk);
             self.emit_bytes(set_op as u8, arg, chunk);
         } else {
@@ -135,12 +137,12 @@ impl Compiler {
         }
     }
 
-    pub(super) fn grouping(&mut self, _can_assign: bool, chunk: &mut Chunk) {
+    pub(super) fn grouping(&mut self, chunk: &mut Chunk) {
         self.expression(chunk);
         self.consume(TokenType::RightParen, "Expected ')' after expression");
     }
 
-    pub(super) fn unary(&mut self, _can_assign: bool, chunk: &mut Chunk) {
+    pub(super) fn unary(&mut self, chunk: &mut Chunk) {
         let operator_type = self.previous_token.token_type;
         self.parse_precedence(Precedence::Unary, chunk);
         match operator_type {
@@ -150,7 +152,7 @@ impl Compiler {
         }
     }
 
-    pub(super) fn binary(&mut self, _can_assign: bool, chunk: &mut Chunk) {
+    pub(super) fn binary(&mut self, chunk: &mut Chunk) {
         let operator_type = self.previous_token.token_type;
         let rule = get_rule(operator_type);
         self.parse_precedence(Precedence::try_from(rule.precedence as u8 + 1).unwrap(), chunk);
@@ -169,7 +171,7 @@ impl Compiler {
         }
     }
 
-    pub(super) fn literal(&mut self, _can_assign: bool, chunk: &mut Chunk) {
+    pub(super) fn literal(&mut self, chunk: &mut Chunk) {
         match self.previous_token.token_type {
             TokenType::Nil => self.emit_byte(OpCode::OpNil as u8, chunk),
             TokenType::True => self.emit_byte(OpCode::OpTrue as u8, chunk),
@@ -178,13 +180,13 @@ impl Compiler {
         }
     }
 
-    pub(super) fn and_(&mut self, _can_assign: bool, chunk: &mut Chunk) {
+    pub(super) fn and_(&mut self, chunk: &mut Chunk) {
         let end_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
         self.emit_pop(chunk);
         self.parse_precedence(Precedence::And, chunk);
         self.patch_jump(chunk, end_jump);
     }
-    pub(super) fn or_(&mut self, _can_assign: bool, chunk: &mut Chunk) {
+    pub(super) fn or_(&mut self, chunk: &mut Chunk) {
         let else_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
         let end_jump = self.emit_jump(chunk, OpCode::OpJump);
         self.patch_jump(chunk, else_jump);
@@ -192,6 +194,34 @@ impl Compiler {
         self.parse_precedence(Precedence::Or, chunk);
         self.patch_jump(chunk, end_jump);
     }
+    pub(super) fn switch(&mut self, chunk: &mut Chunk) {
+        self.expression(chunk);
+        let mut end_jumps: Vec<usize> = vec![];
+        self.consume(TokenType::LeftBrace, "Expected '{'");
+        while self.match_token_type(TokenType::Case) {
+            self.emit_byte(OpCode::OpDup as u8, chunk);
+            self.expression(chunk);
+            self.emit_byte(OpCode::OpEqual as u8, chunk);
+            self.consume(TokenType::EqualGreater, "Expected '=>'");
+            let fail_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
+            self.emit_pop(chunk); // pop bool
+            self.emit_pop(chunk); // pop switch value
+            self.expression(chunk);
+            let end_jump = self.emit_jump(chunk, OpCode::OpJump);
+            end_jumps.push(end_jump);
+            self.patch_jump(chunk, fail_jump);
+            self.emit_pop(chunk); // pop bool
+        }
+        self.emit_pop(chunk); // pop switch value
+        self.consume(TokenType::Default, "Expected default");
+        self.consume(TokenType::EqualGreater, "Expected '=>'");
+        self.expression(chunk);
+        self.consume(TokenType::RightBrace, "Expected '}'");
+        for jump in end_jumps {
+            self.patch_jump(chunk, jump);
+        }
+    }
+
 
     // ── Scope & locals ──────────────────────────────────────────────────────
 
@@ -370,7 +400,7 @@ impl Compiler {
     fn break_statement(&mut self, chunk: &mut Chunk) {
         self.consume(TokenType::Semicolon, "Expected ';' after break.");
         if let Some((loop_depth, start, mut jump)) = self.jumps.pop() {
-            self.discard_locals(loop_depth,false, chunk);
+            self.discard_locals(loop_depth, false, chunk);
             let emit_jump = self.emit_jump(chunk, OpCode::OpJump);
             jump.push(emit_jump);
             self.jumps.push((loop_depth, start, jump));
