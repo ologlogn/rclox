@@ -224,10 +224,30 @@ impl Compiler {
 
     // ── Scope & locals ──────────────────────────────────────────────────────
 
+    fn discard_locals(&mut self, target_depth: usize, modify_compiler_state: bool, with_value: bool, chunk: &mut Chunk) {
+        let mut pop_count = 0;
+        for local in self.locals.iter().rev() {
+            if local.depth <= target_depth {
+                break;
+            }
+            pop_count += 1;
+        }
+        if modify_compiler_state {
+            for _ in 0..pop_count {
+                self.locals.pop();
+            }
+        }
+        if pop_count > 0 {
+            if with_value {
+                self.emit_bytes(OpCode::OpTuckN as u8, pop_count as u8, chunk);
+            } else {
+                self.emit_bytes(OpCode::OpPopN as u8, pop_count as u8, chunk);
+            }
+        }
+    }
     fn begin_scope(&mut self) {
         self.scope_depth += 1;
     }
-
     fn end_scope(&mut self, with_value: bool, chunk: &mut Chunk) {
         self.scope_depth -= 1;
         self.discard_locals(self.scope_depth, true, with_value, chunk);
@@ -368,27 +388,6 @@ impl Compiler {
         self.patch_jump(chunk, else_jump);
     }
 
-    fn discard_locals(&mut self, target_depth: usize, modify_compiler_state: bool, with_value: bool, chunk: &mut Chunk) {
-        let mut pop_count = 0;
-        for local in self.locals.iter().rev() {
-            if local.depth <= target_depth {
-                break;
-            }
-            pop_count += 1;
-        }
-        if modify_compiler_state {
-            for _ in 0..pop_count {
-                self.locals.pop();
-            }
-        }
-        if pop_count > 0 {
-            if with_value {
-                self.emit_bytes(OpCode::OpTuckN as u8, pop_count as u8, chunk);
-            } else {
-                self.emit_bytes(OpCode::OpPopN as u8, pop_count as u8, chunk);
-            }
-        }
-    }
     fn break_statement(&mut self, chunk: &mut Chunk) {
         self.consume(TokenType::Semicolon, "Expected ';' after break.");
         if let Some((loop_depth, start, mut jump)) = self.jumps.pop() {
@@ -446,11 +445,7 @@ impl Compiler {
     fn var_declaration(&mut self, chunk: &mut Chunk) {
         self.consume(TokenType::Identifier, "Expected variable name");
         let token = self.previous_token;
-        let constant = if self.scope_depth == 0 {
-            self.identifier_constant(chunk)
-        } else {
-            0
-        };
+        let constant = if self.scope_depth == 0 { self.identifier_constant(chunk) } else { 0 };
 
         if self.match_token_type(TokenType::Equal) {
             self.expression(chunk);
