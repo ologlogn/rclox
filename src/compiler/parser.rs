@@ -15,6 +15,7 @@ pub struct Parser {
     pub scanner: Scanner,
     pub had_error: bool,
     pub panic_mode: bool,
+    pub can_assign: bool,
 }
 
 impl Parser {
@@ -25,6 +26,7 @@ impl Parser {
             scanner,
             had_error: false,
             panic_mode: false,
+            can_assign: false,
         }
     }
 
@@ -105,8 +107,8 @@ impl Compiler {
 
     fn parse_precedence(&mut self, precedence: Precedence) {
         self.parser.advance();
-        let current_can_assign = self.can_assign;
-        self.can_assign = precedence <= Precedence::Assignment;
+        let current_can_assign = self.parser.can_assign;
+        self.parser.can_assign = precedence <= Precedence::Assignment;
         let prev_type = self.parser.previous_token.token_type;
         match get_rule(prev_type).prefix {
             Some(prefix_fn) => prefix_fn(self),
@@ -123,11 +125,11 @@ impl Compiler {
                 infix_fn(self);
             }
         }
-        if self.can_assign && self.parser.match_token_type(TokenType::Equal) {
+        if self.parser.can_assign && self.parser.match_token_type(TokenType::Equal) {
             let prev = self.parser.previous_token;
             self.parser.error_at(prev, "Invalid assignment target.");
         }
-        self.can_assign = current_can_assign;
+        self.parser.can_assign = current_can_assign;
     }
 
     pub(super) fn expression(&mut self) {
@@ -157,7 +159,7 @@ impl Compiler {
             let global_idx = self.identifier_constant();
             (OpCode::OpGetGlobal, OpCode::OpSetGlobal, global_idx)
         };
-        if self.can_assign && self.parser.match_token_type(TokenType::Equal) {
+        if self.parser.can_assign && self.parser.match_token_type(TokenType::Equal) {
             self.expression();
             self.emit_bytes(set_op as u8, arg);
         } else {

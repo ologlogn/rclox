@@ -18,7 +18,6 @@ pub struct Compiler {
     pub(crate) parser: Parser,
     pub(crate) frames: Vec<FunctionCompiler>,
     pub(crate) vm: *mut Vm,
-    pub(crate) can_assign: bool,
 }
 
 // ── Compiler ─────────────────────────────────────────────────────────────────
@@ -31,7 +30,6 @@ impl Compiler {
             parser: Parser::new(scanner),
             frames: vec![FunctionCompiler::new(init_function, function_type)],
             vm,
-            can_assign: false,
         }
     }
 
