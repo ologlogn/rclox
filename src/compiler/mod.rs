@@ -1,104 +1,115 @@
 use crate::chunk::{Chunk, OpCode};
+use crate::function::{FunctionObject, FunctionType};
 use crate::scanner::Scanner;
-use crate::token::{Token, TokenType};
-use crate::value::Value;
+use crate::token::TokenType;
+use crate::value::{Object, ObjectType, Value};
 use crate::vm::Vm;
 
+mod frame;
 mod parser;
 mod rules;
+
+use frame::FunctionCompiler;
+use parser::Parser;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 pub struct Compiler {
-    current_token: Token,
-    previous_token: Token,
-    scanner: Scanner,
-    had_error: bool,
-    panic_mode: bool,
-    locals: Vec<Local>,
-    scope_depth: usize,
-    vm: *mut Vm,
-    //loop jump depth in the program scope, starting offset of loop, jumps in the loop
-    jumps: Vec<(usize,usize,Vec<usize>)>,
-    can_assign: bool,
-}
-
-pub struct Local {
-    token: Token,
-    depth: usize,
-    is_initialized: bool,
+    pub(crate) parser: Parser,
+    pub(crate) frames: Vec<FunctionCompiler>,
+    pub(crate) vm: *mut Vm,
+    pub(crate) can_assign: bool,
 }
 
 // ── Compiler ─────────────────────────────────────────────────────────────────
 
 impl Compiler {
-    pub(crate) fn new(scanner: Scanner, vm: &mut Vm) -> Self {
+    pub(crate) fn new(scanner: Scanner, vm: &mut Vm, function_type: FunctionType) -> Self {
+        let chunk = Chunk::new();
+        let init_function = vm.allocate_function(FunctionObject::new(chunk, 0, ""));
         Compiler {
-            current_token: Token::default(),
-            previous_token: Token::default(),
-            had_error: false,
-            panic_mode: false,
-            locals: vec![],
-            scope_depth: 0,
-            scanner,
-            vm: vm as *mut Vm,
-            jumps: vec![],
+            parser: Parser::new(scanner),
+            frames: vec![FunctionCompiler::new(init_function, function_type)],
+            vm,
             can_assign: false,
+        }
+    }
+
+    pub(crate) fn current_frame(&mut self) -> &mut FunctionCompiler {
+        self.frames.last_mut().expect("compiler stack should not be empty")
+    }
+
+    pub(crate) fn current_chunk(&mut self) -> &mut Chunk {
+        let function = self.frames.last().expect("compiler stack should not be empty").function;
+        unsafe {
+            match &mut (*function).obj_type {
+                ObjectType::Function(func) => &mut func.chunk,
+                _ => unreachable!(),
+            }
         }
     }
 
     // ── Public entry point ───────────────────────────────────────────────────
 
-    pub fn compile(&mut self, chunk: &mut Chunk) -> bool {
-        self.advance();
-        while !self.match_token_type(TokenType::EOF) {
-            self.declaration(chunk);
+    pub fn compile(&mut self) -> Option<*mut Object> {
+        self.parser.advance();
+        while !self.parser.match_token_type(TokenType::EOF) {
+            self.declaration();
         }
-        self.end_compiler(chunk);
-        !self.had_error
+        self.end_compiler()
+    }
+
+    pub(crate) fn end_compiler(&mut self) -> Option<*mut Object> {
+        self.emit_byte(OpCode::OpNil as u8);
+        self.emit_return();
+        println!("{:?}", self.current_chunk());
+        if !self.parser.had_error {
+            Some(self.frames.pop().unwrap().function)
+        } else {
+            None
+        }
     }
 
     // ── Emission ─────────────────────────────────────────────────────────────
 
-    fn emit_byte(&self, byte: u8, chunk: &mut Chunk) {
-        chunk.write_byte(byte, self.previous_token.line);
+    pub(crate) fn emit_byte(&mut self, byte: u8) {
+        let line = self.parser.previous_token.line;
+        self.current_chunk().write_byte(byte, line);
     }
 
-    fn emit_bytes(&self, byte1: u8, byte2: u8, chunk: &mut Chunk) {
-        self.emit_byte(byte1, chunk);
-        self.emit_byte(byte2, chunk);
+    pub(crate) fn emit_bytes(&mut self, byte1: u8, byte2: u8) {
+        self.emit_byte(byte1);
+        self.emit_byte(byte2);
     }
 
-    fn emit_constant(&mut self, value: Value, chunk: &mut Chunk) {
-        let index = chunk.write_constant(value);
-        self.emit_bytes(OpCode::OpConstant as u8, index, chunk);
+    pub(crate) fn emit_constant(&mut self, value: Value) {
+        let index = self.current_chunk().write_constant(value);
+        self.emit_bytes(OpCode::OpConstant as u8, index);
     }
 
-    fn emit_return(&self, chunk: &mut Chunk) {
-        self.emit_byte(OpCode::OpReturn as u8, chunk);
+    pub(crate) fn emit_return(&mut self) {
+        self.emit_byte(OpCode::OpReturn as u8);
     }
 
-    fn end_compiler(&self, chunk: &mut Chunk) {
-        self.emit_return(chunk);
-    }
-    fn emit_loop(&mut self, chunk: &mut Chunk, loop_start: usize) {
-        self.emit_byte(OpCode::OpLoop as u8, chunk);
-        let offset = (chunk.count() - loop_start + 2) as u16;
-        self.emit_bytes((offset >> 8 & 0xff) as u8, (offset & 0xff) as u8, chunk);
+    pub(crate) fn emit_loop(&mut self, loop_start: usize) {
+        self.emit_byte(OpCode::OpLoop as u8);
+        let offset = (self.current_chunk().count() - loop_start + 2) as u16;
+        self.emit_bytes((offset >> 8 & 0xff) as u8, (offset & 0xff) as u8);
     }
 
-    fn emit_jump(&mut self, chunk: &mut Chunk, op_code: OpCode) -> usize {
-        self.emit_byte(op_code as u8, chunk);
-        self.emit_bytes(0xff, 0xff, chunk);
-        chunk.count() - 2
-    }
-    fn patch_jump(&mut self, chunk: &mut Chunk, offset: usize) {
-        let jump = (chunk.count() - offset - 2) as u16;
-        chunk.write_byte_at(offset, (jump >> 8) as u8);
-        chunk.write_byte_at(offset + 1, (jump & 0xff) as u8);
+    pub(crate) fn emit_jump(&mut self, op_code: OpCode) -> usize {
+        self.emit_byte(op_code as u8);
+        self.emit_bytes(0xff, 0xff);
+        self.current_chunk().count() - 2
     }
 
-    fn emit_pop(&mut self, chunk: &mut Chunk) {
-        self.emit_byte(OpCode::OpPop as u8, chunk);
+    pub(crate) fn patch_jump(&mut self, offset: usize) {
+        let jump = (self.current_chunk().count() - offset - 2) as u16;
+        self.current_chunk().write_byte_at(offset, (jump >> 8) as u8);
+        self.current_chunk().write_byte_at(offset + 1, (jump & 0xff) as u8);
+    }
+
+    pub(crate) fn emit_pop(&mut self) {
+        self.emit_byte(OpCode::OpPop as u8);
     }
 }

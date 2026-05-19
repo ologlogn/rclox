@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>rclox VM — Detailed Bytecode + Stack Trace</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0d1117; color: #c9d1d9;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 12px; padding: 20px;
+}
+
+/* ── Header ── */
+.header { margin-bottom: 20px; }
+.header h1 { color: #58a6ff; font-size: 17px; margin-bottom: 4px; }
+.source-box {
+  background: #161b22; border: 1px solid #21262d; border-radius: 6px;
+  padding: 10px 14px; margin-top: 10px; color: #e6edf3; font-size: 12px; line-height: 1.8;
+}
+.src-kw { color: #ff7b72; }
+.src-fn { color: #d2a8ff; }
+.src-num { color: #79c0ff; }
+.src-op { color: #ffa657; }
+
+/* ── Layout ── */
+.layout { display: grid; grid-template-columns: 1fr 1fr 1fr 320px; gap: 12px; margin-bottom: 12px; }
+.panel { background: #161b22; border: 1px solid #21262d; border-radius: 8px; overflow: hidden; }
+.panel.active-chunk { border-color: #f0883e; box-shadow: 0 0 0 1px #f0883e33; }
+.panel-header {
+  padding: 7px 12px; border-bottom: 1px solid #21262d;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.panel-title { font-size: 11px; font-weight: bold; letter-spacing: 0.06em; text-transform: uppercase; }
+.chunk-script .panel-title { color: #8b949e; }
+.chunk-quad   .panel-title { color: #79c0ff; }
+.chunk-double .panel-title { color: #7ee787; }
+.panel.active-chunk .panel-title { color: #f0883e; }
+.arity-badge {
+  font-size: 10px; color: #6e7681; background: #0d1117;
+  padding: 1px 6px; border-radius: 10px; border: 1px solid #21262d;
+}
+
+/* ── Bytecode ── */
+.bytecode-list { padding: 6px 0; }
+.bc-row {
+  display: flex; align-items: center; gap: 0;
+  padding: 3px 10px; line-height: 1.5;
+  border-left: 3px solid transparent;
+  transition: background 0.15s;
+}
+.bc-row:hover { background: #1c2128; }
+.bc-row.current {
+  background: #1f2d1a; border-left-color: #3fb950;
+}
+.bc-row.current .bc-op { color: #3fb950; }
+.bc-row.dead { opacity: 0.3; }
+.bc-offset { color: #6e7681; width: 36px; flex-shrink: 0; font-size: 10px; }
+.bc-op { color: #79c0ff; width: 130px; flex-shrink: 0; }
+.bc-arg { color: #e3b341; flex: 1; }
+.bc-cmt { color: #484f58; font-size: 10px; margin-left: 6px; }
+.cur-arrow { color: #3fb950; font-size: 10px; margin-right: 4px; width: 10px; flex-shrink: 0; }
+
+/* ── Stack panel ── */
+.stack-frames-panel { display: flex; flex-direction: column; gap: 10px; }
+
+.section-label {
+  font-size: 10px; color: #6e7681; letter-spacing: 0.1em;
+  text-transform: uppercase; padding: 6px 12px 4px; border-bottom: 1px solid #21262d;
+}
+
+.stack-slots { padding: 8px 10px; display: flex; flex-direction: column-reverse; gap: 3px; min-height: 200px; }
+.slot-row { display: flex; align-items: center; gap: 6px; }
+.slot-idx { color: #484f58; font-size: 10px; width: 22px; text-align: right; flex-shrink: 0; }
+.slot-val {
+  flex: 1; padding: 4px 8px; border-radius: 4px; border: 1px solid #30363d;
+  font-size: 11px; display: flex; justify-content: space-between; align-items: center;
+}
+.slot-val.t-script { background: #111318; border-color: #484f58; color: #8b949e; }
+.slot-val.t-fn     { background: #0d1e36; border-color: #1f6feb; color: #79c0ff; }
+.slot-val.t-num    { background: #0e1f0e; border-color: #238636; color: #7ee787; }
+.slot-val.t-result { background: #1f1700; border-color: #9e6a03; color: #e3b341; }
+.slot-val.t-nil    { background: #1c1117; border-color: #6e3476; color: #d2a8ff; }
+.slot-tag {
+  font-size: 9px; padding: 1px 5px; border-radius: 3px; opacity: 0.7;
+}
+.slot-tag.tag-base { background: #f0883e33; color: #f0883e; border: 1px solid #f0883e55; }
+.slot-tag.tag-arg  { background: #79c0ff22; color: #79c0ff; border: 1px solid #79c0ff44; }
+.slot-tag.tag-top  { background: #3fb95022; color: #3fb950; border: 1px solid #3fb95044; }
+
+.frames-list { padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.frame-card {
+  padding: 6px 10px; border-radius: 5px; border: 1px solid #30363d; background: #0d1117;
+}
+.frame-card.f-active { border-color: #f0883e; background: #1a0f00; }
+.frame-card.f-dormant { opacity: 0.5; }
+.frame-head { display: flex; justify-content: space-between; align-items: center; }
+.frame-name { font-size: 12px; font-weight: bold; }
+.f-active .frame-name { color: #f0883e; }
+.frame-ip-badge {
+  font-size: 10px; color: #6e7681; background: #161b22;
+  padding: 1px 6px; border-radius: 3px; border: 1px solid #21262d;
+}
+.frame-meta { margin-top: 3px; color: #6e7681; font-size: 10px; }
+
+/* ── Step info ── */
+.step-info {
+  background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+  padding: 12px 16px; display: flex; gap: 20px; align-items: flex-start;
+  margin-bottom: 12px;
+}
+.step-num { color: #6e7681; font-size: 11px; flex-shrink: 0; width: 60px; }
+.step-op-name { color: #f0883e; font-size: 13px; font-weight: bold; margin-bottom: 4px; }
+.step-note { color: #8b949e; font-size: 11px; line-height: 1.6; flex: 1; }
+.step-effect { color: #e3b341; font-size: 11px; margin-top: 4px; }
+
+/* ── Controls ── */
+.controls {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+}
+.btn {
+  background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+  padding: 7px 18px; border-radius: 6px; cursor: pointer; font-family: inherit;
+  font-size: 12px; transition: all 0.15s;
+}
+.btn:hover:not(:disabled) { background: #30363d; border-color: #58a6ff; color: #58a6ff; }
+.btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn.primary { background: #1f6feb; border-color: #388bfd; color: #fff; }
+.btn.primary:hover { background: #388bfd; }
+.progress {
+  flex: 1; height: 4px; background: #21262d; border-radius: 2px; overflow: hidden;
+}
+.progress-fill { height: 100%; background: #388bfd; transition: width 0.2s; border-radius: 2px; }
+.step-counter { color: #6e7681; font-size: 11px; white-space: nowrap; }
+
+.empty-stack { color: #484f58; font-size: 11px; text-align: center; padding: 20px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>rclox VM — Bytecode + Stack Step Trace</h1>
+  <div class="source-box">
+    <span class="src-kw">fun</span> <span class="src-fn">double</span>(x) { <span class="src-kw">return</span> x <span class="src-op">*</span> <span class="src-num">2</span>; }
+    &nbsp;&nbsp;&nbsp;
+    <span class="src-kw">fun</span> <span class="src-fn">quad</span>(x) { <span class="src-kw">return</span> <span class="src-fn">double</span>(<span class="src-fn">double</span>(x)); }
+    &nbsp;&nbsp;&nbsp;
+    <span class="src-fn">quad</span>(<span class="src-num">5</span>);
+  </div>
+</div>
+
+<div class="controls">
+  <button class="btn" id="btnFirst" onclick="goTo(0)">⏮ First</button>
+  <button class="btn" id="btnPrev"  onclick="prev()">◀ Prev</button>
+  <button class="btn primary" id="btnNext" onclick="next()">Next ▶</button>
+  <button class="btn" id="btnLast" onclick="goTo(steps.length-1)">Last ⏭</button>
+  <div class="progress"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="step-counter" id="stepCounter">1 / 21</div>
+</div>
+
+<div class="step-info">
+  <div class="step-num" id="stepNum">STEP 0</div>
+  <div>
+    <div class="step-op-name" id="stepOpName"></div>
+    <div class="step-note" id="stepNote"></div>
+    <div class="step-effect" id="stepEffect"></div>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="panel chunk-script" id="panelScript">
+    <div class="panel-header">
+      <span class="panel-title">script</span>
+      <span class="arity-badge">arity 0</span>
+    </div>
+    <div class="bytecode-list" id="bcScript"></div>
+  </div>
+  <div class="panel chunk-quad" id="panelQuad">
+    <div class="panel-header">
+      <span class="panel-title">fun quad</span>
+      <span class="arity-badge">arity 1</span>
+    </div>
+    <div class="bytecode-list" id="bcQuad"></div>
+  </div>
+  <div class="panel chunk-double" id="panelDouble">
+    <div class="panel-header">
+      <span class="panel-title">fun double</span>
+      <span class="arity-badge">arity 1</span>
+    </div>
+    <div class="bytecode-list" id="bcDouble"></div>
+  </div>
+  <div class="stack-frames-panel">
+    <div class="panel">
+      <div class="section-label">VM Stack (bottom → top)</div>
+      <div class="stack-slots" id="stackSlots"></div>
+    </div>
+    <div class="panel">
+      <div class="section-label">Call Frames</div>
+      <div class="frames-list" id="framesList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Bytecode definitions ──────────────────────────────────────────────────────
+
+const chunks = {
+  script: [
+    { id: "s0",  offset: "0000", op: "OP_CONSTANT",      arg: "<fun double>",   cmt: "" },
+    { id: "s2",  offset: "0002", op: "OP_DEFINE_GLOBAL", arg: '"double"',       cmt: "" },
+    { id: "s4",  offset: "0004", op: "OP_CONSTANT",      arg: "<fun quad>",     cmt: "" },
+    { id: "s6",  offset: "0006", op: "OP_DEFINE_GLOBAL", arg: '"quad"',         cmt: "" },
+    { id: "s8",  offset: "0008", op: "OP_GET_GLOBAL",    arg: '"quad"',         cmt: "push callee" },
+    { id: "s10", offset: "0010", op: "OP_CONSTANT",      arg: "5",              cmt: "push arg" },
+    { id: "s12", offset: "0012", op: "OP_CALL",          arg: "1",              cmt: "arg_count=1" },
+    { id: "s14", offset: "0014", op: "OP_POP",           arg: "",               cmt: "discard result" },
+    { id: "s15", offset: "0015", op: "OP_NIL",           arg: "",               cmt: "implicit return" },
+    { id: "s16", offset: "0016", op: "OP_RETURN",        arg: "",               cmt: "" },
+  ],
+  quad: [
+    { id: "q0",  offset: "0000", op: "OP_GET_GLOBAL",    arg: '"double"',       cmt: "outer callee" },
+    { id: "q2",  offset: "0002", op: "OP_GET_GLOBAL",    arg: '"double"',       cmt: "inner callee" },
+    { id: "q4",  offset: "0004", op: "OP_GET_LOCAL",     arg: "1",              cmt: "x = stack[base+1]" },
+    { id: "q6",  offset: "0006", op: "OP_CALL",          arg: "1",              cmt: "inner double(x)" },
+    { id: "q8",  offset: "0008", op: "OP_CALL",          arg: "1",              cmt: "outer double(result)" },
+    { id: "q10", offset: "0010", op: "OP_RETURN",        arg: "",               cmt: "" },
+    { id: "q11", offset: "0011", op: "OP_NIL",           arg: "",               cmt: "dead code" },
+    { id: "q12", offset: "0012", op: "OP_RETURN",        arg: "",               cmt: "dead code" },
+  ],
+  double: [
+    { id: "d0",  offset: "0000", op: "OP_GET_LOCAL",     arg: "1",              cmt: "x = stack[base+1]" },
+    { id: "d2",  offset: "0002", op: "OP_CONSTANT",      arg: "2",              cmt: "" },
+    { id: "d4",  offset: "0004", op: "OP_MULTIPLY",      arg: "",               cmt: "pop a,b push a*b" },
+    { id: "d5",  offset: "0005", op: "OP_RETURN",        arg: "",               cmt: "" },
+    { id: "d6",  offset: "0006", op: "OP_NIL",           arg: "",               cmt: "dead code" },
+    { id: "d7",  offset: "0007", op: "OP_RETURN",        arg: "",               cmt: "dead code" },
+  ],
+};
+
+// ── Step definitions ──────────────────────────────────────────────────────────
+// stack entry: { v: display value, t: type (script/fn/num/result/nil), label: tag }
+// frame: { name, ip: display ip string, base, active }
+// active: { chunk, id } — which bytecode row to highlight
+
+const steps = [
+  {
+    step: 0, title: "VM START",
+    op: "interpret(*script)",
+    note: "Script function object pushed to stack. call() creates first CallFrame with stack_base = len − 0 − 1 = 0.",
+    effect: "stack[0] = <script>  ·  call_stack.push(frame{script, ip=0, base=0})",
+    active: { chunk: "script", id: "s0" },
+    stack: [
+      { v: "<script>", t: "script", label: "base=0 · slot 0" },
+    ],
+    frames: [
+      { name: "script", ip: "0000", base: 0, active: true },
+    ],
+  },
+  {
+    step: 1, title: "DEFINE double",
+    op: "OP_CONSTANT <fun double>  +  OP_DEFINE_GLOBAL",
+    note: "Compile-time: double's chunk was already compiled. Runtime: push the function object, then pop it into globals[\"double\"]. Stack unchanged after define.",
+    effect: 'globals["double"] = <fun double>',
+    active: { chunk: "script", id: "s4" },
+    stack: [
+      { v: "<script>", t: "script", label: "base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0004", base: 0, active: true },
+    ],
+  },
+  {
+    step: 2, title: "DEFINE quad",
+    op: "OP_CONSTANT <fun quad>  +  OP_DEFINE_GLOBAL",
+    note: "Same pattern. quad's chunk was compiled first (inner functions compile before outer body continues).",
+    effect: 'globals["quad"] = <fun quad>',
+    active: { chunk: "script", id: "s8" },
+    stack: [
+      { v: "<script>", t: "script", label: "base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0008", base: 0, active: true },
+    ],
+  },
+  {
+    step: 3, title: "PUSH CALLEE + ARG",
+    op: "OP_GET_GLOBAL \"quad\"  +  OP_CONSTANT 5",
+    note: "Pratt rule: expression_statement → expression → variable() → OP_GET_GLOBAL. Then '(' triggers infix call() rule → push arg 5.",
+    effect: "stack.push(<fun quad>)  ·  stack.push(5)",
+    active: { chunk: "script", id: "s12" },
+    stack: [
+      { v: "5",         t: "num",    label: "arg · TOP" },
+      { v: "<fun quad>",t: "fn",     label: "callee · len−1−1=1" },
+      { v: "<script>",  t: "script", label: "base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0012", base: 0, active: true },
+    ],
+  },
+  {
+    step: 4, title: "OP_CALL 1  →  push quad frame",
+    op: "OP_CALL  arg_count=1",
+    note: "callee = stack[len − arg_count − 1] = stack[3−1−1] = stack[1] = <fun quad>. arity check passes (1==1). stack_base = 3−1−1 = 1.",
+    effect: "call_stack.push(frame{quad, ip=0, base=1})",
+    active: { chunk: "quad", id: "q0" },
+    stack: [
+      { v: "5",         t: "num",    label: "slot 1 · x" },
+      { v: "<fun quad>",t: "fn",     label: "base=1 · slot 0" },
+      { v: "<script>",  t: "script", label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0012", base: 0, active: false },
+      { name: "quad",   ip: "0000", base: 1, active: true  },
+    ],
+  },
+  {
+    step: 5, title: "quad: push outer callee",
+    op: "OP_GET_GLOBAL \"double\"",
+    note: "double(double(x)) — outer call's callee is pushed first. It will sit at stack[3] waiting while the inner call executes.",
+    effect: "stack.push(<fun double>)",
+    active: { chunk: "quad", id: "q2" },
+    stack: [
+      { v: "<fun double>",t: "fn",  label: "outer callee · TOP" },
+      { v: "5",           t: "num", label: "slot 1 · x=5" },
+      { v: "<fun quad>",  t: "fn",  label: "quad base=1 · slot 0" },
+      { v: "<script>",  t: "script",label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0012", base: 0, active: false },
+      { name: "quad",   ip: "0002", base: 1, active: true  },
+    ],
+  },
+  {
+    step: 6, title: "quad: push inner callee",
+    op: "OP_GET_GLOBAL \"double\"",
+    note: "Inner call's callee pushed next. Stack now has: outer-callee, inner-callee sitting above quad's locals.",
+    effect: "stack.push(<fun double>)",
+    active: { chunk: "quad", id: "q4" },
+    stack: [
+      { v: "<fun double>",t: "fn",  label: "inner callee · TOP" },
+      { v: "<fun double>",t: "fn",  label: "outer callee" },
+      { v: "5",           t: "num", label: "slot 1 · x=5" },
+      { v: "<fun quad>",  t: "fn",  label: "quad base=1 · slot 0" },
+      { v: "<script>",  t: "script",label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0012", base: 0, active: false },
+      { name: "quad",   ip: "0004", base: 1, active: true  },
+    ],
+  },
+  {
+    step: 7, title: "quad: push arg x",
+    op: "OP_GET_LOCAL 1",
+    note: "OpGetLocal 1 → stack[quad.base + 1] = stack[1+1] = stack[2] = 5. Copies the value onto top of stack as argument for inner call.",
+    effect: "stack.push(stack[base+1])  =  stack.push(5)",
+    active: { chunk: "quad", id: "q6" },
+    stack: [
+      { v: "5",           t: "num", label: "arg · TOP" },
+      { v: "<fun double>",t: "fn",  label: "inner callee · len−1−1=4" },
+      { v: "<fun double>",t: "fn",  label: "outer callee" },
+      { v: "5",           t: "num", label: "slot 1 · x=5" },
+      { v: "<fun quad>",  t: "fn",  label: "quad base=1 · slot 0" },
+      { v: "<script>",  t: "script",label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0012", base: 0, active: false },
+      { name: "quad",   ip: "0006", base: 1, active: true  },
+    ],
+  },
+  {
+    step: 8, title: "OP_CALL 1  →  push inner double frame",
+    op: "OP_CALL  arg_count=1",
+    note: "callee = stack[6−1−1] = stack[4] = <fun double>. stack_base = 6−1−1 = 4. double's slot 0 = <double>, slot 1 = 5.",
+    effect: "call_stack.push(frame{double, ip=0, base=4})",
+    active: { chunk: "double", id: "d0" },
+    stack: [
+      { v: "5",           t: "num", label: "slot 1 · x=5" },
+      { v: "<fun double>",t: "fn",  label: "double base=4 · slot 0" },
+      { v: "<fun double>",t: "fn",  label: "quad: outer callee" },
+      { v: "5",           t: "num", label: "quad: slot 1 · x" },
+      { v: "<fun quad>",  t: "fn",  label: "quad base=1 · slot 0" },
+      { v: "<script>",  t: "script",label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0012", base: 0, active: false },
+      { name: "quad",   ip: "0006", base: 1, active: false },
+      { name: "double", ip: "0000", base: 4, active: true  },
+    ],
+  },
+  {
+    step: 9, title: "double: read x",
+    op: "OP_GET_LOCAL 1",
+    note: "stack[double.base + 1] = stack[4+1] = stack[5] = 5. Pushes copy of x.",
+    effect: "stack.push(stack[4+1])  =  stack.push(5)",
+    active: { chunk: "double", id: "d2" },
+    stack: [
+      { v: "5",           t: "num", label: "x copy · TOP" },
+      { v: "5",           t: "num", label: "slot 1 · x=5" },
+      { v: "<fun double>",t: "fn",  label: "double base=4 · slot 0" },
+      { v: "<fun double>",t: "fn",  label: "quad: outer callee" },
+      { v: "5",           t: "num", label: "quad: slot 1 · x" },
+      { v: "<fun quad>",  t: "fn",  label: "quad base=1 · slot 0" },
+      { v: "<script>",  t: "script",label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0012", base: 0, active: false },
+      { name: "quad",   ip: "0006", base: 1, active: false },
+      { name: "double", ip: "0002", base: 4, active: true  },
+    ],
+  },
+  {
+    step: 10, title: "double: push constant 2",
+    op: "OP_CONSTANT 2",
+    note: "Reads constant index from next byte, looks up chunk.constants[0] = 2.0. Pushes onto stack.",
+    effect: "stack.push(2)",
+    active: { chunk: "double", id: "d4" },
+    stack: [
+      { v: "2",           t: "num", label: "rhs · TOP" },
+      { v: "5",           t: "num", label: "lhs (x copy)" },
+      { v: "5",           t: "num", label: "slot 1 · x=5" },
+      { v: "<fun double>",t: "fn",  label: "double base=4 · slot 0" },
+      { v: "<fun double>",t: "fn",  label: "quad: outer callee" },
+      { v: "5",           t: "num", label: "quad: slot 1 · x" },
+      { v: "<fun quad>",  t: "fn",  label: "quad base=1 · slot 0" },
+      { v: "<script>",  t: "script",label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0012", base: 0, active: false },
+      { name: "quad",   ip: "0006", base: 1, active: false },
+      { name: "double", ip: "0004", base: 4, active: true  },
+    ],
+  },
+  {
+    step: 11, title: "double: multiply",
+    op: "OP_MULTIPLY",
+    note: "binary_op: pops b=2, pops a=5, pushes a*b=10. The two argument copies are gone; result sits on top.",
+    effect: "pop 2, pop 5  →  push 10",
+    active: { chunk: "double", id: "d5" },
+    stack: [
+      { v: "10",          t: "result",label: "result · TOP" },
+      { v: "5",           t: "num",   label: "slot 1 · x=5" },
+      { v: "<fun double>",t: "fn",    label: "double base=4 · slot 0" },
+      { v: "<fun double>",t: "fn",    label: "quad: outer callee" },
+      { v: "5",           t: "num",   label: "quad: slot 1 · x" },
+      { v: "<fun quad>",  t: "fn",    label: "quad base=1 · slot 0" },
+      { v: "<script>",  t: "script",  label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0012", base: 0, active: false },
+      { name: "quad",   ip: "0006", base: 1, active: false },
+      { name: "double", ip: "0005", base: 4, active: true  },
+    ],
+  },
+  {
+    step: 12, title: "double: OP_RETURN  (inner call)",
+    op: "OP_RETURN",
+    note: "result = stack.pop() = 10. frame = call_stack.pop() (base=4). stack.truncate(4) removes slots 4,5. stack.push(10). 10 lands exactly where <double> callee was.",
+    effect: "pop 10  ·  pop frame(double,base=4)  ·  truncate(4)  ·  push 10",
+    active: { chunk: "quad", id: "q8" },
+    stack: [
+      { v: "10",          t: "result",label: "inner result · TOP" },
+      { v: "<fun double>",t: "fn",    label: "outer callee · slot 3" },
+      { v: "5",           t: "num",   label: "quad: slot 1 · x" },
+      { v: "<fun quad>",  t: "fn",    label: "quad base=1 · slot 0" },
+      { v: "<script>",  t: "script",  label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0012", base: 0, active: false },
+      { name: "quad",   ip: "0008", base: 1, active: true  },
+    ],
+  },
+  {
+    step: 13, title: "OP_CALL 1  →  push outer double frame",
+    op: "OP_CALL  arg_count=1",
+    note: "callee = stack[5−1−1] = stack[3] = <fun double>. stack_base = 5−1−1 = 3. double slot 0 = <double>, slot 1 = 10.",
+    effect: "call_stack.push(frame{double, ip=0, base=3})",
+    active: { chunk: "double", id: "d0" },
+    stack: [
+      { v: "10",          t: "num",   label: "slot 1 · x=10" },
+      { v: "<fun double>",t: "fn",    label: "double base=3 · slot 0" },
+      { v: "5",           t: "num",   label: "quad: slot 1 · x" },
+      { v: "<fun quad>",  t: "fn",    label: "quad base=1 · slot 0" },
+      { v: "<script>",  t: "script",  label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0012", base: 0, active: false },
+      { name: "quad",   ip: "0008", base: 1, active: false },
+      { name: "double", ip: "0000", base: 3, active: true  },
+    ],
+  },
+  {
+    step: 14, title: "double: read x",
+    op: "OP_GET_LOCAL 1",
+    note: "stack[double.base + 1] = stack[3+1] = stack[4] = 10.",
+    effect: "stack.push(stack[3+1])  =  stack.push(10)",
+    active: { chunk: "double", id: "d2" },
+    stack: [
+      { v: "10",          t: "num",   label: "x copy · TOP" },
+      { v: "10",          t: "num",   label: "slot 1 · x=10" },
+      { v: "<fun double>",t: "fn",    label: "double base=3 · slot 0" },
+      { v: "5",           t: "num",   label: "quad: slot 1 · x" },
+      { v: "<fun quad>",  t: "fn",    label: "quad base=1 · slot 0" },
+      { v: "<script>",  t: "script",  label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0012", base: 0, active: false },
+      { name: "quad",   ip: "0008", base: 1, active: false },
+      { name: "double", ip: "0002", base: 3, active: true  },
+    ],
+  },
+  {
+    step: 15, title: "double: push constant 2",
+    op: "OP_CONSTANT 2",
+    note: "Same as before — reads 2.0 from constants pool.",
+    effect: "stack.push(2)",
+    active: { chunk: "double", id: "d4" },
+    stack: [
+      { v: "2",           t: "num",   label: "rhs · TOP" },
+      { v: "10",          t: "num",   label: "lhs (x copy)" },
+      { v: "10",          t: "num",   label: "slot 1 · x=10" },
+      { v: "<fun double>",t: "fn",    label: "double base=3 · slot 0" },
+      { v: "5",           t: "num",   label: "quad: slot 1 · x" },
+      { v: "<fun quad>",  t: "fn",    label: "quad base=1 · slot 0" },
+      { v: "<script>",  t: "script",  label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0012", base: 0, active: false },
+      { name: "quad",   ip: "0008", base: 1, active: false },
+      { name: "double", ip: "0004", base: 3, active: true  },
+    ],
+  },
+  {
+    step: 16, title: "double: multiply",
+    op: "OP_MULTIPLY",
+    note: "pop 2, pop 10 → push 20.",
+    effect: "pop 2, pop 10  →  push 20",
+    active: { chunk: "double", id: "d5" },
+    stack: [
+      { v: "20",          t: "result",label: "result · TOP" },
+      { v: "10",          t: "num",   label: "slot 1 · x=10" },
+      { v: "<fun double>",t: "fn",    label: "double base=3 · slot 0" },
+      { v: "5",           t: "num",   label: "quad: slot 1 · x" },
+      { v: "<fun quad>",  t: "fn",    label: "quad base=1 · slot 0" },
+      { v: "<script>",  t: "script",  label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0012", base: 0, active: false },
+      { name: "quad",   ip: "0008", base: 1, active: false },
+      { name: "double", ip: "0005", base: 3, active: true  },
+    ],
+  },
+  {
+    step: 17, title: "double: OP_RETURN  (outer call)",
+    op: "OP_RETURN",
+    note: "result = stack.pop() = 20. frame = call_stack.pop() (base=3). stack.truncate(3). stack.push(20). 20 lands where outer <double> callee was.",
+    effect: "pop 20  ·  pop frame(double,base=3)  ·  truncate(3)  ·  push 20",
+    active: { chunk: "quad", id: "q10" },
+    stack: [
+      { v: "20",          t: "result",label: "double result · TOP" },
+      { v: "5",           t: "num",   label: "quad: slot 1 · x" },
+      { v: "<fun quad>",  t: "fn",    label: "quad base=1 · slot 0" },
+      { v: "<script>",  t: "script",  label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0012", base: 0, active: false },
+      { name: "quad",   ip: "0010", base: 1, active: true  },
+    ],
+  },
+  {
+    step: 18, title: "quad: OP_RETURN",
+    op: "OP_RETURN",
+    note: "result = stack.pop() = 20. frame = call_stack.pop() (base=1). stack.truncate(1). stack.push(20). Back in script — result is the return value of quad(5).",
+    effect: "pop 20  ·  pop frame(quad,base=1)  ·  truncate(1)  ·  push 20",
+    active: { chunk: "script", id: "s14" },
+    stack: [
+      { v: "20",          t: "result",label: "quad result · TOP" },
+      { v: "<script>",  t: "script",  label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0014", base: 0, active: true },
+    ],
+  },
+  {
+    step: 19, title: "script: OP_POP",
+    op: "OP_POP",
+    note: "expression_statement emits OP_POP after every expression. quad(5) result discarded (we didn't print it). Stack back to script-only.",
+    effect: "pop 20  →  discarded",
+    active: { chunk: "script", id: "s15" },
+    stack: [
+      { v: "<script>",  t: "script",  label: "script base=0" },
+    ],
+    frames: [
+      { name: "script", ip: "0015", base: 0, active: true },
+    ],
+  },
+  {
+    step: 20, title: "script: OP_NIL + OP_RETURN",
+    op: "OP_NIL  →  OP_RETURN",
+    note: "Implicit return from script. OP_NIL pushes nil. OP_RETURN pops nil, pops frame — call_stack is now empty → run() returns Ok(()). VM done.",
+    effect: "call_stack.is_empty() → return Ok(())",
+    active: { chunk: "script", id: "s16" },
+    stack: [],
+    frames: [],
+  },
+];
+
+// ── Render helpers ────────────────────────────────────────────────────────────
+
+function renderBytecode(containerId, chunkName, activeId) {
+  const rows = chunks[chunkName];
+  const el = document.getElementById(containerId);
+  el.innerHTML = rows.map(r => {
+    const isCurrent = r.id === activeId;
+    const isDead = r.cmt === "dead code";
+    return `<div class="bc-row ${isCurrent ? 'current' : ''} ${isDead ? 'dead' : ''}">
+      <span class="cur-arrow">${isCurrent ? '▶' : ' '}</span>
+      <span class="bc-offset">${r.offset}</span>
+      <span class="bc-op">${r.op}</span>
+      <span class="bc-arg">${r.arg}</span>
+      ${r.cmt ? `<span class="bc-cmt">; ${r.cmt}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderStack(slots) {
+  const el = document.getElementById('stackSlots');
+  if (!slots.length) {
+    el.innerHTML = '<div class="empty-stack">— empty —</div>';
+    return;
+  }
+  const isTop = (i) => i === slots.length - 1;
+  el.innerHTML = slots.map((s, i) => `
+    <div class="slot-row">
+      <div class="slot-idx">${i}</div>
+      <div class="slot-val t-${s.t}">
+        <span>${s.v}</span>
+        <span class="slot-tag ${isTop(i) ? 'tag-top' : ''}">${s.label}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderFrames(frames) {
+  const el = document.getElementById('framesList');
+  if (!frames.length) {
+    el.innerHTML = '<div class="empty-stack">— empty —</div>';
+    return;
+  }
+  el.innerHTML = [...frames].reverse().map(f => `
+    <div class="frame-card ${f.active ? 'f-active' : 'f-dormant'}">
+      <div class="frame-head">
+        <span class="frame-name">${f.active ? '▶ ' : ''}${f.name}</span>
+        <span class="frame-ip-badge">ip=${f.ip}</span>
+      </div>
+      <div class="frame-meta">stack_base = ${f.base}  ·  slot0 = stack[${f.base}]</div>
+    </div>
+  `).join('');
+}
+
+function applyStep(s) {
+  // bytecode panels
+  const chunkMap = { script: 'bcScript', quad: 'bcQuad', double: 'bcDouble' };
+  const panelMap = { script: 'panelScript', quad: 'panelQuad', double: 'panelDouble' };
+
+  for (const [cname, cid] of Object.entries(chunkMap)) {
+    const activeId = s.active.chunk === cname ? s.active.id : null;
+    renderBytecode(cid, cname, activeId);
+    document.getElementById(panelMap[cname]).classList.toggle('active-chunk', s.active.chunk === cname);
+  }
+
+  // stack + frames
+  renderStack(s.stack);
+  renderFrames(s.frames);
+
+  // step info
+  document.getElementById('stepNum').textContent   = `STEP ${s.step}`;
+  document.getElementById('stepOpName').textContent = s.op;
+  document.getElementById('stepNote').textContent   = s.note;
+  document.getElementById('stepEffect').textContent = '→ ' + s.effect;
+
+  // controls
+  document.getElementById('btnPrev').disabled  = cur === 0;
+  document.getElementById('btnFirst').disabled = cur === 0;
+  document.getElementById('btnNext').disabled  = cur === steps.length - 1;
+  document.getElementById('btnLast').disabled  = cur === steps.length - 1;
+  document.getElementById('stepCounter').textContent = `${cur + 1} / ${steps.length}`;
+  document.getElementById('progressFill').style.width = `${(cur / (steps.length - 1)) * 100}%`;
+}
+
+let cur = 0;
+function next()    { if (cur < steps.length - 1) goTo(cur + 1); }
+function prev()    { if (cur > 0)                 goTo(cur - 1); }
+function goTo(n)   { cur = n; applyStep(steps[cur]); }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next();
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   prev();
+});
+
+goTo(0);
+</script>
+</body>
+</html>

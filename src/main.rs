@@ -1,19 +1,20 @@
 mod chunk;
 mod compiler;
+mod function;
 mod heap;
 mod scanner;
 mod token;
 mod value;
 mod vm;
 
-use crate::chunk::Chunk;
 use crate::compiler::Compiler;
+use crate::function::{FunctionType};
 use crate::scanner::Scanner;
 use crate::vm::{InterpretResult, Vm};
-use rustyline::{DefaultEditor, error::ReadlineError, EditMode};
+use rustyline::config::Configurer;
+use rustyline::{DefaultEditor, EditMode, error::ReadlineError};
 use std::process::exit;
 use std::{env, fs};
-use rustyline::config::Configurer;
 
 fn main() {
     let mut vm = Vm::new();
@@ -28,17 +29,15 @@ fn main() {
     }
 }
 pub fn interpret(source: String, vm: &mut Vm) -> InterpretResult {
-    let mut chunk = Chunk::new();
     let scanner = Scanner::new(source);
-    let mut parser = Compiler::new(scanner, vm);
-    if !parser.compile(&mut chunk) {
-        InterpretResult::InterpretCompileError
-    } else {
-        println!("{:?}", chunk);
-        match vm.interpret(&chunk) {
+    let mut compiler = Compiler::new(scanner, vm, FunctionType::TypeScript);
+    if let Some(func) = compiler.compile() {
+        match vm.interpret(func) {
             Ok(()) => InterpretResult::InterpretOk,
             Err(err) => err,
         }
+    } else {
+        InterpretResult::InterpretCompileError
     }
 }
 
