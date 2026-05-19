@@ -1,6 +1,7 @@
 use crate::function::FunctionObject;
 use std::fmt::{Display, Formatter};
 use std::ops::{Div, Mul, Sub};
+use crate::native::NativeFn;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -45,7 +46,6 @@ pub struct Object {
     pub is_marked: bool,
     pub next: *mut Object,
 }
-pub type NativeFn = fn(&[Value]) -> Value;
 
 pub enum ObjectType {
     String(String),

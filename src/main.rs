@@ -6,6 +6,7 @@ mod scanner;
 mod token;
 mod value;
 mod vm;
+mod native;
 
 use crate::compiler::Compiler;
 use crate::function::{FunctionType};

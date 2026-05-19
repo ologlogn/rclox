@@ -1,7 +1,8 @@
 use crate::chunk::{Chunk, OpCode};
 use crate::function::{CallFrame, FunctionObject};
 use crate::heap::Heap;
-use crate::value::{NativeFn, Object, ObjectType, Value};
+use crate::native::{NativeFn, modulo};
+use crate::value::{Object, ObjectType, Value};
 use std::collections::HashMap;
 use std::fmt::Debug;
 
@@ -35,6 +36,7 @@ impl Vm {
             use std::time::{SystemTime, UNIX_EPOCH};
             Value::Number(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64())
         });
+        vm.define_native("mod", modulo());
         vm
     }
 
@@ -57,10 +59,7 @@ impl Vm {
 
     pub fn call(&mut self, function: &mut FunctionObject, arg_count: usize) -> Result<(), InterpretResult> {
         if arg_count != function.arity {
-            self.runtime_error(format!(
-                "Expected {} but got {} arguments for function {}",
-                arg_count, function.arity, function.name
-            ).as_str());
+            self.runtime_error(format!("Expected {} but got {} arguments for function {}", arg_count, function.arity, function.name).as_str());
             return Err(InterpretResult::InterpretRuntimeError);
         }
         let frame = CallFrame {
@@ -196,7 +195,6 @@ impl Vm {
                         }
                     }
                 }
-                // ── Control flow ─────────────────────────────────────────────
                 OpCode::OpReturn => {
                     let result = self.stack.pop().unwrap_or(Value::Nil);
                     let frame = self.call_stack.pop().expect("call stack underflow");
@@ -206,6 +204,7 @@ impl Vm {
                     self.stack.truncate(frame.stack_base);
                     self.stack.push(result);
                 }
+                // ── Control flow ─────────────────────────────────────────────
                 OpCode::OpJumpIfFalse => {
                     let offset = self.read_short();
                     if self.peek_top().is_falsey() {
