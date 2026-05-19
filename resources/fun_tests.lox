@@ -44,6 +44,64 @@ fun locals() {
 }
 locals();
 
-// 8. arity error — should print error + stack trace, not panic
+// 8. return value used in expression
+fun square(x) { return x * x; }
+print square(3) + square(4);
+
+// 9. multiple return paths
+fun sign(n) {
+  if (n > 0) return "pos";
+  if (n < 0) return "neg";
+  return "zero";
+}
+print sign(5);
+print sign(-3);
+print sign(0);
+
+// 10. function stored in variable
+fun triple(x) { return x * 3; }
+var f = triple;
+print f(7);
+
+// 11. mutual recursion
+fun isEven(n) {
+  if (n == 0) return true;
+  return isOdd(n - 1);
+}
+fun isOdd(n) {
+  if (n == 0) return false;
+  return isEven(n - 1);
+}
+print isEven(4);
+print isOdd(3);
+
+// 12. local scope shadowing inside function
+fun shadowTest() {
+  var x = 1;
+  {
+    var x = 2;
+    print x;
+  }
+  print x;
+}
+shadowTest();
+
+// 13. string params + return
+fun greetName(name) {
+  return "hello " + name;
+}
+print greetName("lav");
+
+// 14. native clock — just check it returns a number > 0
+var t = clock();
+print t > 0;
+
+// 15. fibonacci timing via clock
+var before = clock();
+fib(20);
+var after = clock();
+print after - before > 0;
+
+// 16. arity error — should print error + stack trace, not panic
 fun exact(a, b) { print a + b; }
 exact(1, 2, 3);

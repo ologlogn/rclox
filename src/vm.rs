@@ -1,7 +1,7 @@
 use crate::chunk::{Chunk, OpCode};
 use crate::function::{CallFrame, FunctionObject};
 use crate::heap::Heap;
-use crate::value::{Object, ObjectType, Value};
+use crate::value::{NativeFn, Object, ObjectType, Value};
 use std::collections::HashMap;
 use std::fmt::Debug;
 
@@ -24,13 +24,18 @@ impl Vm {
     // ── Setup ────────────────────────────────────────────────────────────────
 
     pub fn new() -> Vm {
-        Vm {
+        let mut vm = Vm {
             stack: Vec::new(),
             heap: Heap::new(),
             interned_strings: HashMap::new(),
             globals: HashMap::new(),
             call_stack: Vec::new(),
-        }
+        };
+        vm.define_native("clock", |_| {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            Value::Number(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64())
+        });
+        vm
     }
 
     fn current_frame(&mut self) -> &mut CallFrame {
@@ -176,6 +181,13 @@ impl Vm {
                         unsafe {
                             match &mut (*function).obj_type {
                                 ObjectType::Function(function_obj) => self.call(function_obj, arg_count)?,
+                                ObjectType::Native(f) => {
+                                    let len = self.stack.len();
+                                    let args = self.stack[len - arg_count..len].to_vec();
+                                    let result = f(&args);
+                                    self.stack.truncate(len - arg_count - 1);
+                                    self.stack.push(result);
+                                }
                                 _ => {
                                     self.runtime_error("Invalid function type");
                                     return Err(InterpretResult::InterpretRuntimeError);
@@ -332,6 +344,10 @@ impl Vm {
     }
     pub fn allocate_function(&mut self, func: FunctionObject) -> *mut Object {
         self.allocate_object(ObjectType::Function(func))
+    }
+    pub fn define_native(&mut self, name: &str, f: NativeFn) {
+        let obj = self.allocate_object(ObjectType::Native(f));
+        self.globals.insert(name.to_string(), Value::Object(obj));
     }
 }
 

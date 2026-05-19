@@ -1,6 +1,6 @@
+use crate::function::FunctionObject;
 use std::fmt::{Display, Formatter};
 use std::ops::{Div, Mul, Sub};
-use crate::function::FunctionObject;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -15,18 +15,17 @@ impl Display for Value {
             Value::Bool(b) => write!(f, "{}", b),
             Value::Number(n) => write!(f, "{}", n),
             Value::Nil => write!(f, "nil"),
-            Value::Object(ptr) => {
-                unsafe {
-                    if ptr.is_null() {
-                        return write!(f, "nil");
-                    }
-                    let obj = &**ptr;
-                    match &obj.obj_type {
-                        ObjectType::String(s) => write!(f, "{}", s),
-                        ObjectType::Function(fun) => write!(f, "<fun {}>", fun.name),
-                    }
+            Value::Object(ptr) => unsafe {
+                if ptr.is_null() {
+                    return write!(f, "nil");
                 }
-            }
+                let obj = &**ptr;
+                match &obj.obj_type {
+                    ObjectType::String(s) => write!(f, "{}", s),
+                    ObjectType::Function(fun) => write!(f, "<fun {}>", fun.name),
+                    ObjectType::Native(_) => write!(f, "<native fn>"),
+                }
+            },
         }
     }
 }
@@ -46,11 +45,13 @@ pub struct Object {
     pub is_marked: bool,
     pub next: *mut Object,
 }
+pub type NativeFn = fn(&[Value]) -> Value;
+
 pub enum ObjectType {
     String(String),
     Function(FunctionObject),
+    Native(NativeFn),
 }
-
 
 impl Value {
     pub fn is_falsey(&self) -> bool {
