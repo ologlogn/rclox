@@ -1,4 +1,5 @@
 use crate::chunk::{Chunk, OpCode};
+use crate::function::{CallFrame, FunctionObject};
 use crate::heap::Heap;
 use crate::value::{Object, ObjectType, Value};
 use std::collections::HashMap;
@@ -11,11 +12,12 @@ pub enum InterpretResult {
 }
 
 pub struct Vm {
-    ip: usize,
+    //    ip: usize,
     stack: Vec<Value>,
     heap: Heap,
     interned_strings: HashMap<String, *mut Object>,
     globals: HashMap<String, Value>,
+    call_stack: Vec<CallFrame>,
 }
 
 impl Vm {
@@ -23,41 +25,58 @@ impl Vm {
 
     pub fn new() -> Vm {
         Vm {
-            ip: 0,
             stack: Vec::new(),
             heap: Heap::new(),
             interned_strings: HashMap::new(),
             globals: HashMap::new(),
+            call_stack: Vec::new(),
         }
     }
 
-    pub fn interpret(&mut self, chunk: &Chunk) -> Result<(), InterpretResult> {
-        self.ip = 0;
-        self.stack.clear();
-        self.run(chunk)
+    fn current_frame(&mut self) -> &mut CallFrame {
+        self.call_stack.last_mut().unwrap()
+    }
+    fn current_chunk(&mut self) -> &mut Chunk {
+        unsafe {
+            match &mut (*self.current_frame().function).obj_type {
+                ObjectType::Function(func) => &mut func.chunk,
+                _ => unreachable!(),
+            }
+        }
+    }
+    fn push_frame(&mut self, function: *mut Object, arg_count: usize) {
+        let stack_base = self.stack.len() - arg_count - 1;
+        self.call_stack.push(CallFrame { function, ip: 0, stack_base });
+    }
+    pub fn interpret(&mut self, function: *mut Object) -> Result<(), InterpretResult> {
+        self.push_frame(function, 0);
+        self.run()
     }
 
     // ── Bytecode reading ─────────────────────────────────────────────────────
 
-    fn read_byte(&mut self, chunk: &Chunk) -> u8 {
-        let byte = chunk.read_byte(self.ip);
-        self.ip += 1;
+    fn read_byte(&mut self) -> u8 {
+        let ip = self.current_frame().ip;
+        let byte = self.current_chunk().read_byte(ip);
+        self.current_frame().ip += 1;
         byte
     }
 
-    fn read_short(&mut self, chunk: &Chunk) -> u16 {
-        let high = chunk.read_byte(self.ip) as u16;
-        let low = chunk.read_byte(self.ip + 1) as u16;
-        self.ip += 2;
+    fn read_short(&mut self) -> u16 {
+        let ip = self.current_frame().ip;
+        let high = self.current_chunk().read_byte(ip) as u16;
+        let low = self.current_chunk().read_byte(ip + 1) as u16;
+        self.current_frame().ip += 2;
         (high << 8) | low
     }
 
-    fn read_constant(&mut self, chunk: &Chunk) -> Value {
-        chunk.read_constant(self.read_byte(chunk) as usize)
+    fn read_constant(&mut self) -> Value {
+        let b = self.read_byte();
+        self.current_chunk().read_constant(b as usize)
     }
 
-    fn read_string(&mut self, chunk: &Chunk) -> String {
-        format!("{}", self.read_constant(chunk))
+    fn read_string(&mut self) -> String {
+        format!("{}", self.read_constant())
     }
 
     // ── Stack helpers ────────────────────────────────────────────────────────
@@ -68,13 +87,13 @@ impl Vm {
 
     // ── Arithmetic helpers ────────────────────────────────────────────────────
 
-    fn binary_op<F>(&mut self, chunk: &Chunk, op: F) -> Result<(), InterpretResult>
+    fn binary_op<F>(&mut self, op: F) -> Result<(), InterpretResult>
     where
         F: FnOnce(&Value, &Value) -> Result<Value, &'static str>,
     {
         let len = self.stack.len();
         if len < 2 {
-            self.runtime_error("Stack underflow", chunk);
+            self.runtime_error("Stack underflow");
             return Err(InterpretResult::InterpretRuntimeError);
         }
         let a = &self.stack[len - 2];
@@ -87,16 +106,16 @@ impl Vm {
                 Ok(())
             }
             Err(msg) => {
-                self.runtime_error(msg, chunk);
+                self.runtime_error(msg);
                 Err(InterpretResult::InterpretRuntimeError)
             }
         }
     }
 
-    fn add(&mut self, chunk: &Chunk) -> Result<(), InterpretResult> {
+    fn add(&mut self) -> Result<(), InterpretResult> {
         let len = self.stack.len();
         if len < 2 {
-            self.runtime_error("Stack underflow", chunk);
+            self.runtime_error("Stack underflow");
             return Err(InterpretResult::InterpretRuntimeError);
         }
         let a = &self.stack[len - 2];
@@ -112,10 +131,14 @@ impl Vm {
                         let ptr = self.allocate_string(concatenated.as_str());
                         Value::Object(ptr)
                     }
+                    _ => {
+                        self.runtime_error("Operands must be two numbers or two strings");
+                        return Err(InterpretResult::InterpretRuntimeError);
+                    }
                 }
             },
             _ => {
-                self.runtime_error("Operands must be two numbers or two strings", chunk);
+                self.runtime_error("Operands must be two numbers or two strings");
                 return Err(InterpretResult::InterpretRuntimeError);
             }
         };
@@ -127,29 +150,29 @@ impl Vm {
 
     // ── Main dispatch loop ───────────────────────────────────────────────────
 
-    fn run(&mut self, chunk: &Chunk) -> Result<(), InterpretResult> {
+    fn run(&mut self) -> Result<(), InterpretResult> {
         loop {
-            let opcode = OpCode::try_from(self.read_byte(chunk)).unwrap();
+            let opcode = OpCode::try_from(self.read_byte()).unwrap();
             match opcode {
                 // ── Control flow ─────────────────────────────────────────────
                 OpCode::OpReturn => return Ok(()),
                 OpCode::OpJumpIfFalse => {
-                    let offset = self.read_short(chunk);
+                    let offset = self.read_short();
                     if self.peek_top().is_falsey() {
-                        self.ip += offset as usize;
+                        self.current_frame().ip += offset as usize;
                     }
                 }
                 OpCode::OpJump => {
-                    let offset = self.read_short(chunk);
-                    self.ip += offset as usize;
+                    let offset = self.read_short();
+                    self.current_frame().ip += offset as usize;
                 }
                 OpCode::OpLoop => {
-                    let offset = self.read_short(chunk);
-                    self.ip -= offset as usize;
+                    let offset = self.read_short();
+                    self.current_frame().ip -= offset as usize;
                 }
                 // ── Constants ────────────────────────────────────────────────
                 OpCode::OpConstant => {
-                    let value = self.read_constant(chunk);
+                    let value = self.read_constant();
                     self.stack.push(value);
                 }
                 OpCode::OpNil => self.stack.push(Value::Nil),
@@ -161,54 +184,56 @@ impl Vm {
                     self.stack.pop();
                 }
                 OpCode::OpPopN => {
-                    let to_pop = self.read_byte(chunk);
+                    let to_pop = self.read_byte();
                     self.stack.truncate(self.stack.len() - to_pop as usize);
                 }
                 OpCode::OpDup => {
                     let v1 = self.peek_top();
                     self.stack.push(v1.clone());
                 }
-                OpCode::OpTuckN => {
+                OpCode::OpYieldBlock => {
                     let result = self.stack.pop().unwrap();
-                    let to_pop = self.read_byte(chunk);
+                    let to_pop = self.read_byte();
                     self.stack.truncate(self.stack.len() - to_pop as usize);
                     self.stack.push(result);
                 }
 
                 // ── Globals ──────────────────────────────────────────────────
                 OpCode::OpDefineGlobal => {
-                    let name = self.read_string(chunk);
+                    let name = self.read_string();
                     self.globals.insert(name, self.stack.pop().unwrap());
                 }
                 OpCode::OpGetGlobal => {
-                    let name = self.read_string(chunk);
+                    let name = self.read_string();
                     match self.globals.get(&name) {
                         Some(value) => self.stack.push(value.clone()),
                         None => {
-                            self.runtime_error(&format!("Undefined variable '{}'", name), chunk);
+                            self.runtime_error(&format!("Undefined variable '{}'", name));
                             return Err(InterpretResult::InterpretRuntimeError);
                         }
                     }
                 }
                 OpCode::OpSetGlobal => {
-                    let name = self.read_string(chunk);
+                    let name = self.read_string();
                     if self.globals.contains_key(&name) {
                         let value = self.peek_top();
                         self.globals.insert(name, value);
                     } else {
-                        self.runtime_error(&format!("Undefined variable '{}'", name), chunk);
+                        self.runtime_error(&format!("Undefined variable '{}'", name));
                         return Err(InterpretResult::InterpretRuntimeError);
                     }
                 }
 
                 // ── Locals ───────────────────────────────────────────────────
                 OpCode::OpGetLocal => {
-                    let slot = self.read_byte(chunk) as usize;
-                    self.stack.push(self.stack[slot].clone());
+                    let slot = self.read_byte() as usize;
+                    let base = self.current_frame().stack_base;
+                    self.stack.push(self.stack[base + slot].clone());
                 }
                 OpCode::OpSetLocal => {
-                    let slot = self.read_byte(chunk) as usize;
-                    self.stack[slot] = self.peek_top();
+                    let slot = self.read_byte() as usize;
+                    let base = self.current_frame().stack_base;
+                    self.stack[slot + base] = self.peek_top();
                 }
 
                 // ── Unary ops ────────────────────────────────────────────────
@@ -222,13 +247,13 @@ impl Vm {
                 }
 
                 // ── Binary ops ───────────────────────────────────────────────
-                OpCode::OpAdd => self.add(chunk)?,
-                OpCode::OpSubtract => self.binary_op(chunk, |a, b| a - b)?,
-                OpCode::OpMultiply => self.binary_op(chunk, |a, b| a * b)?,
-                OpCode::OpDivide => self.binary_op(chunk, |a, b| a / b)?,
-                OpCode::OpGreater => self.binary_op(chunk, |a, b| a.greater_than(b))?,
-                OpCode::OpLess => self.binary_op(chunk, |a, b| a.less_than(b))?,
-                OpCode::OpEqual => self.binary_op(chunk, |a, b| Ok(Value::Bool(a == b)))?,
+                OpCode::OpAdd => self.add()?,
+                OpCode::OpSubtract => self.binary_op(|a, b| a - b)?,
+                OpCode::OpMultiply => self.binary_op(|a, b| a * b)?,
+                OpCode::OpDivide => self.binary_op(|a, b| a / b)?,
+                OpCode::OpGreater => self.binary_op(|a, b| a.greater_than(b))?,
+                OpCode::OpLess => self.binary_op(|a, b| a.less_than(b))?,
+                OpCode::OpEqual => self.binary_op(|a, b| Ok(Value::Bool(a == b)))?,
 
                 // ── Output ───────────────────────────────────────────────────
                 OpCode::OpPrint => println!("{}", self.stack.pop().unwrap()),
@@ -238,9 +263,10 @@ impl Vm {
 
     // ── Error handling ───────────────────────────────────────────────────────
 
-    fn runtime_error(&mut self, message: &str, chunk: &Chunk) {
-        eprintln!("[line {}] Runtime error: {}", chunk.get_line(self.ip - 1), message);
-        self.ip = 0;
+    fn runtime_error(&mut self, message: &str) {
+        let ip = self.current_frame().ip;
+        eprintln!("[line {}] Runtime error: {}", self.current_chunk().get_line(ip - 1), message);
+        self.current_frame().ip = 0;
         self.stack.clear();
     }
 
@@ -257,6 +283,9 @@ impl Vm {
         let ptr = self.allocate_object(ObjectType::String(string.to_string()));
         self.interned_strings.insert(string.to_string(), ptr);
         ptr
+    }
+    pub fn allocate_function(&mut self, func: FunctionObject) -> *mut Object {
+        self.allocate_object(ObjectType::Function(func))
     }
 }
 

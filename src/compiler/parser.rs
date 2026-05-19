@@ -1,5 +1,5 @@
 use super::{Compiler, Local};
-use crate::chunk::{Chunk, OpCode};
+use crate::chunk::OpCode;
 use crate::compiler::rules::{Precedence, get_rule};
 use crate::token::{Token, TokenType};
 use crate::value::Value;
@@ -79,12 +79,12 @@ impl Compiler {
     }
     // ── Pratt parser ─────────────────────────────────────────────────────────
 
-    fn parse_precedence(&mut self, precedence: Precedence, chunk: &mut Chunk) {
+    fn parse_precedence(&mut self, precedence: Precedence) {
         self.advance();
         let current_can_assign = self.can_assign;
         self.can_assign = precedence <= Precedence::Assignment;
         match get_rule(self.previous_token.token_type).prefix {
-            Some(prefix_fn) => prefix_fn(self, chunk),
+            Some(prefix_fn) => prefix_fn(self),
             None => {
                 self.error_at(self.previous_token, "Expected expression.");
                 return;
@@ -93,7 +93,7 @@ impl Compiler {
         while precedence <= get_rule(self.current_token.token_type).precedence {
             self.advance();
             if let Some(infix_fn) = get_rule(self.previous_token.token_type).infix {
-                infix_fn(self, chunk);
+                infix_fn(self);
             }
         }
         if self.can_assign && self.match_token_type(TokenType::Equal) {
@@ -102,129 +102,129 @@ impl Compiler {
         self.can_assign = current_can_assign;
     }
 
-    pub(super) fn expression(&mut self, chunk: &mut Chunk) {
-        self.parse_precedence(Precedence::Assignment, chunk);
+    pub(super) fn expression(&mut self) {
+        self.parse_precedence(Precedence::Assignment);
     }
 
     // ── Parse functions (prefix / infix) ─────────────────────────────────────
 
-    pub(super) fn number(&mut self, chunk: &mut Chunk) {
+    pub(super) fn number(&mut self) {
         let lexeme = self.scanner.get_lexeme(self.previous_token);
         let val = Value::Number(lexeme.parse().unwrap());
-        self.emit_constant(val, chunk);
+        self.emit_constant(val);
     }
 
-    pub(super) fn string(&mut self, chunk: &mut Chunk) {
+    pub(super) fn string(&mut self) {
         let lexeme = self.scanner.get_lexeme(self.previous_token);
         let string_value = lexeme[1..lexeme.len() - 1].to_string();
         let obj_ptr = unsafe { self.vm.as_mut().unwrap().allocate_string(string_value.as_str()) };
-        self.emit_constant(Value::Object(obj_ptr), chunk);
+        self.emit_constant(Value::Object(obj_ptr));
     }
 
-    pub(super) fn variable(&mut self, chunk: &mut Chunk) {
+    pub(super) fn variable(&mut self) {
         let (is_local, local_idx) = self.resolve_local();
         let (get_op, set_op, arg) = if is_local {
             (OpCode::OpGetLocal, OpCode::OpSetLocal, local_idx)
         } else {
-            let global_idx = self.identifier_constant(chunk);
+            let global_idx = self.identifier_constant();
             (OpCode::OpGetGlobal, OpCode::OpSetGlobal, global_idx)
         };
         if self.can_assign && self.match_token_type(TokenType::Equal) {
-            self.expression(chunk);
-            self.emit_bytes(set_op as u8, arg, chunk);
+            self.expression();
+            self.emit_bytes(set_op as u8, arg);
         } else {
-            self.emit_bytes(get_op as u8, arg, chunk);
+            self.emit_bytes(get_op as u8, arg);
         }
     }
 
-    pub(super) fn grouping(&mut self, chunk: &mut Chunk) {
-        self.expression(chunk);
+    pub(super) fn grouping(&mut self) {
+        self.expression();
         self.consume(TokenType::RightParen, "Expected ')' after expression");
     }
 
-    pub(super) fn unary(&mut self, chunk: &mut Chunk) {
+    pub(super) fn unary(&mut self) {
         let operator_type = self.previous_token.token_type;
-        self.parse_precedence(Precedence::Unary, chunk);
+        self.parse_precedence(Precedence::Unary);
         match operator_type {
-            TokenType::Minus => self.emit_byte(OpCode::OpNegate as u8, chunk),
-            TokenType::Bang => self.emit_byte(OpCode::OpNot as u8, chunk),
+            TokenType::Minus => self.emit_byte(OpCode::OpNegate as u8),
+            TokenType::Bang => self.emit_byte(OpCode::OpNot as u8),
             _ => unreachable!("Unknown unary operator"),
         }
     }
 
-    pub(super) fn binary(&mut self, chunk: &mut Chunk) {
+    pub(super) fn binary(&mut self) {
         let operator_type = self.previous_token.token_type;
         let rule = get_rule(operator_type);
-        self.parse_precedence(Precedence::try_from(rule.precedence as u8 + 1).unwrap(), chunk);
+        self.parse_precedence(Precedence::try_from(rule.precedence as u8 + 1).unwrap());
         match operator_type {
-            TokenType::BangEqual => self.emit_bytes(OpCode::OpEqual as u8, OpCode::OpNot as u8, chunk),
-            TokenType::EqualEqual => self.emit_byte(OpCode::OpEqual as u8, chunk),
-            TokenType::Greater => self.emit_byte(OpCode::OpGreater as u8, chunk),
-            TokenType::Less => self.emit_byte(OpCode::OpLess as u8, chunk),
-            TokenType::GreaterEqual => self.emit_bytes(OpCode::OpLess as u8, OpCode::OpNot as u8, chunk),
-            TokenType::LessEqual => self.emit_bytes(OpCode::OpGreater as u8, OpCode::OpNot as u8, chunk),
-            TokenType::Plus => self.emit_byte(OpCode::OpAdd as u8, chunk),
-            TokenType::Minus => self.emit_byte(OpCode::OpSubtract as u8, chunk),
-            TokenType::Star => self.emit_byte(OpCode::OpMultiply as u8, chunk),
-            TokenType::Slash => self.emit_byte(OpCode::OpDivide as u8, chunk),
+            TokenType::BangEqual => self.emit_bytes(OpCode::OpEqual as u8, OpCode::OpNot as u8),
+            TokenType::EqualEqual => self.emit_byte(OpCode::OpEqual as u8),
+            TokenType::Greater => self.emit_byte(OpCode::OpGreater as u8),
+            TokenType::Less => self.emit_byte(OpCode::OpLess as u8),
+            TokenType::GreaterEqual => self.emit_bytes(OpCode::OpLess as u8, OpCode::OpNot as u8),
+            TokenType::LessEqual => self.emit_bytes(OpCode::OpGreater as u8, OpCode::OpNot as u8),
+            TokenType::Plus => self.emit_byte(OpCode::OpAdd as u8),
+            TokenType::Minus => self.emit_byte(OpCode::OpSubtract as u8),
+            TokenType::Star => self.emit_byte(OpCode::OpMultiply as u8),
+            TokenType::Slash => self.emit_byte(OpCode::OpDivide as u8),
             _ => unreachable!("Unknown binary operator"),
         }
     }
 
-    pub(super) fn literal(&mut self, chunk: &mut Chunk) {
+    pub(super) fn literal(&mut self) {
         match self.previous_token.token_type {
-            TokenType::Nil => self.emit_byte(OpCode::OpNil as u8, chunk),
-            TokenType::True => self.emit_byte(OpCode::OpTrue as u8, chunk),
-            TokenType::False => self.emit_byte(OpCode::OpFalse as u8, chunk),
+            TokenType::Nil => self.emit_byte(OpCode::OpNil as u8),
+            TokenType::True => self.emit_byte(OpCode::OpTrue as u8),
+            TokenType::False => self.emit_byte(OpCode::OpFalse as u8),
             _ => unreachable!("Unknown literal"),
         }
     }
 
-    pub(super) fn and_(&mut self, chunk: &mut Chunk) {
-        let end_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
-        self.emit_pop(chunk);
-        self.parse_precedence(Precedence::And, chunk);
-        self.patch_jump(chunk, end_jump);
+    pub(super) fn and_(&mut self) {
+        let end_jump = self.emit_jump(OpCode::OpJumpIfFalse);
+        self.emit_pop();
+        self.parse_precedence(Precedence::And);
+        self.patch_jump(end_jump);
     }
-    pub(super) fn or_(&mut self, chunk: &mut Chunk) {
-        let else_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
-        let end_jump = self.emit_jump(chunk, OpCode::OpJump);
-        self.patch_jump(chunk, else_jump);
-        self.emit_pop(chunk);
-        self.parse_precedence(Precedence::Or, chunk);
-        self.patch_jump(chunk, end_jump);
+    pub(super) fn or_(&mut self) {
+        let else_jump = self.emit_jump(OpCode::OpJumpIfFalse);
+        let end_jump = self.emit_jump(OpCode::OpJump);
+        self.patch_jump(else_jump);
+        self.emit_pop();
+        self.parse_precedence(Precedence::Or);
+        self.patch_jump(end_jump);
     }
-    pub(super) fn switch(&mut self, chunk: &mut Chunk) {
-        self.expression(chunk);
+    pub(super) fn switch(&mut self) {
+        self.expression();
         let mut end_jumps: Vec<usize> = vec![];
         self.consume(TokenType::LeftBrace, "Expected '{'");
         while self.match_token_type(TokenType::Case) {
-            self.emit_byte(OpCode::OpDup as u8, chunk);
-            self.expression(chunk);
-            self.emit_byte(OpCode::OpEqual as u8, chunk);
+            self.emit_byte(OpCode::OpDup as u8);
+            self.expression();
+            self.emit_byte(OpCode::OpEqual as u8);
             self.consume(TokenType::EqualGreater, "Expected '=>'");
-            let fail_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
-            self.emit_pop(chunk); // pop bool
-            self.emit_pop(chunk); // pop switch value
-            self.case_block(chunk);
-            let end_jump = self.emit_jump(chunk, OpCode::OpJump);
+            let fail_jump = self.emit_jump(OpCode::OpJumpIfFalse);
+            self.emit_pop(); // pop bool
+            self.emit_pop(); // pop switch value
+            self.case_block();
+            let end_jump = self.emit_jump(OpCode::OpJump);
             end_jumps.push(end_jump);
-            self.patch_jump(chunk, fail_jump);
-            self.emit_pop(chunk); // pop bool
+            self.patch_jump(fail_jump);
+            self.emit_pop(); // pop bool
         }
-        self.emit_pop(chunk); // pop switch value
+        self.emit_pop(); // pop switch value
         self.consume(TokenType::Default, "Expected default");
         self.consume(TokenType::EqualGreater, "Expected '=>'");
-        self.case_block(chunk);
+        self.case_block();
         self.consume(TokenType::RightBrace, "Expected '}'");
         for jump in end_jumps {
-            self.patch_jump(chunk, jump);
+            self.patch_jump(jump);
         }
     }
 
     // ── Scope & locals ──────────────────────────────────────────────────────
 
-    fn discard_locals(&mut self, target_depth: usize, modify_compiler_state: bool, with_value: bool, chunk: &mut Chunk) {
+    fn discard_locals(&mut self, target_depth: usize, modify_compiler_state: bool, with_value: bool) {
         let mut pop_count = 0;
         for local in self.locals.iter().rev() {
             if local.depth <= target_depth {
@@ -239,18 +239,18 @@ impl Compiler {
         }
         if pop_count > 0 {
             if with_value {
-                self.emit_bytes(OpCode::OpTuckN as u8, pop_count as u8, chunk);
+                self.emit_bytes(OpCode::OpYieldBlock as u8, pop_count as u8);
             } else {
-                self.emit_bytes(OpCode::OpPopN as u8, pop_count as u8, chunk);
+                self.emit_bytes(OpCode::OpPopN as u8, pop_count as u8);
             }
         }
     }
     fn begin_scope(&mut self) {
         self.scope_depth += 1;
     }
-    fn end_scope(&mut self, with_value: bool, chunk: &mut Chunk) {
+    fn end_scope(&mut self, with_value: bool) {
         self.scope_depth -= 1;
-        self.discard_locals(self.scope_depth, true, with_value, chunk);
+        self.discard_locals(self.scope_depth, true, with_value);
     }
     fn add_local(&mut self, token: Token) {
         self.locals.push(Local {
@@ -285,40 +285,40 @@ impl Compiler {
 
     // ── Variables ───────────────────────────────────────────────────────────
 
-    fn identifier_constant(&mut self, chunk: &mut Chunk) -> u8 {
+    fn identifier_constant(&mut self) -> u8 {
         let name = self.scanner.get_lexeme(self.previous_token);
         let var_name = unsafe { self.vm.as_mut().unwrap().allocate_string(name) };
-        chunk.write_constant(Value::Object(var_name))
+        self.current_chunk().write_constant(Value::Object(var_name))
     }
 
     // ── Control flow ────────────────────────────────────────────
-    fn case_block(&mut self, chunk: &mut Chunk) {
+    fn case_block(&mut self) {
         self.begin_scope();
         self.consume(TokenType::LeftBrace, "Expected '{' after case.");
         while !self.check(TokenType::Yield) && !self.check(TokenType::EOF) && !self.check(TokenType::RightBrace) {
-            self.declaration(chunk);
+            self.declaration();
         }
         if self.check(TokenType::Yield) {
             self.advance(); // consume 'yield'
-            self.expression(chunk); // leaves value on stack
+            self.expression(); // leaves value on stack
             self.consume(TokenType::Semicolon, "Expected ';' after yield expression.");
         } else {
-            self.emit_byte(OpCode::OpNil as u8, chunk); // add Nil
+            self.emit_byte(OpCode::OpNil as u8); // add Nil
         }
         self.consume(TokenType::RightBrace, "Expected '}'.");
-        self.end_scope(true, chunk); // TuckN
+        self.end_scope(true); // TuckN
     }
-    fn for_statement(&mut self, chunk: &mut Chunk) {
+    fn for_statement(&mut self) {
         self.begin_scope();
         self.jumps.push((self.scope_depth, 0, Vec::new()));
         self.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
         if self.match_token_type(TokenType::Semicolon) {
         } else if self.match_token_type(TokenType::Var) {
-            self.var_declaration(chunk);
+            self.var_declaration();
         } else {
-            self.expression_statement(chunk);
+            self.expression_statement();
         }
-        let mut loop_start = chunk.count();
+        let mut loop_start = self.current_chunk().count();
         self.jumps.last_mut().unwrap().1 = loop_start;
         let mut is_conditional = false;
         // we can't use this to check patch jump, because 0 is valid code. we can't set to -1 because it's unsigned.
@@ -326,131 +326,131 @@ impl Compiler {
         let mut exit_jump = 0;
         if !self.match_token_type(TokenType::Semicolon) {
             is_conditional = true;
-            self.expression(chunk);
+            self.expression();
             self.consume(TokenType::Semicolon, "Expected ';' after the loop condition.");
-            exit_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
-            self.emit_pop(chunk);
+            exit_jump = self.emit_jump(OpCode::OpJumpIfFalse);
+            self.emit_pop();
         }
         if !self.match_token_type(TokenType::RightParen) {
-            let body_jump = self.emit_jump(chunk, OpCode::OpJump);
-            let increment_start = chunk.count();
-            self.expression(chunk);
-            self.emit_pop(chunk);
+            let body_jump = self.emit_jump(OpCode::OpJump);
+            let increment_start = self.current_chunk().count();
+            self.expression();
+            self.emit_pop();
             self.consume(TokenType::RightParen, "Expected ')' after clauses.");
-            self.emit_loop(chunk, loop_start);
+            self.emit_loop(loop_start);
             loop_start = increment_start;
             self.jumps.last_mut().unwrap().1 = loop_start;
-            self.patch_jump(chunk, body_jump);
+            self.patch_jump(body_jump);
         }
-        self.statement(chunk);
-        self.emit_loop(chunk, loop_start);
+        self.statement();
+        self.emit_loop(loop_start);
         if is_conditional {
-            self.patch_jump(chunk, exit_jump);
-            self.emit_pop(chunk);
+            self.patch_jump(exit_jump);
+            self.emit_pop();
         }
         let (_, _, breaks) = self.jumps.pop().unwrap();
         for break_ in breaks {
-            self.patch_jump(chunk, break_);
+            self.patch_jump(break_);
         }
-        self.end_scope(false, chunk);
+        self.end_scope(false);
     }
-    fn while_statement(&mut self, chunk: &mut Chunk) {
-        let loop_start = chunk.count();
+    fn while_statement(&mut self) {
+        let loop_start = self.current_chunk().count();
         self.jumps.push((self.scope_depth, loop_start, Vec::new()));
         self.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
-        self.expression(chunk);
+        self.expression();
         self.consume(TokenType::RightParen, "Expected ')' after condition.");
-        let exit_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
-        self.emit_pop(chunk);
-        self.statement(chunk);
-        self.emit_loop(chunk, loop_start);
-        self.patch_jump(chunk, exit_jump);
-        self.emit_pop(chunk);
+        let exit_jump = self.emit_jump(OpCode::OpJumpIfFalse);
+        self.emit_pop();
+        self.statement();
+        self.emit_loop(loop_start);
+        self.patch_jump(exit_jump);
+        self.emit_pop();
         let (_, _, breaks) = self.jumps.pop().unwrap();
         for break_ in breaks {
-            self.patch_jump(chunk, break_);
+            self.patch_jump(break_);
         }
     }
 
-    fn if_statement(&mut self, chunk: &mut Chunk) {
+    fn if_statement(&mut self) {
         self.consume(TokenType::LeftParen, "Expected '(' after 'if'.");
-        self.expression(chunk);
+        self.expression();
         self.consume(TokenType::RightParen, "Expected ')' after condition.");
-        let then_jump = self.emit_jump(chunk, OpCode::OpJumpIfFalse);
-        self.emit_pop(chunk);
-        self.statement(chunk);
-        let else_jump = self.emit_jump(chunk, OpCode::OpJump);
-        self.patch_jump(chunk, then_jump);
-        self.emit_pop(chunk);
+        let then_jump = self.emit_jump(OpCode::OpJumpIfFalse);
+        self.emit_pop();
+        self.statement();
+        let else_jump = self.emit_jump(OpCode::OpJump);
+        self.patch_jump(then_jump);
+        self.emit_pop();
         if self.match_token_type(TokenType::Else) {
-            self.statement(chunk);
+            self.statement();
         }
-        self.patch_jump(chunk, else_jump);
+        self.patch_jump(else_jump);
     }
 
-    fn break_statement(&mut self, chunk: &mut Chunk) {
+    fn break_statement(&mut self) {
         self.consume(TokenType::Semicolon, "Expected ';' after break.");
         if let Some((loop_depth, start, mut jump)) = self.jumps.pop() {
-            self.discard_locals(loop_depth, false, false, chunk);
-            let emit_jump = self.emit_jump(chunk, OpCode::OpJump);
+            self.discard_locals(loop_depth, false, false);
+            let emit_jump = self.emit_jump(OpCode::OpJump);
             jump.push(emit_jump);
             self.jumps.push((loop_depth, start, jump));
         } else {
             self.error_at(self.previous_token, "Break can't be used outside loops");
         }
     }
-    fn continue_statement(&mut self, chunk: &mut Chunk) {
+    fn continue_statement(&mut self) {
         self.consume(TokenType::Semicolon, "Expected ';' after continue.");
         if let Some((loop_depth, start, jump)) = self.jumps.pop() {
-            self.discard_locals(loop_depth, false, false, chunk);
-            self.emit_loop(chunk, start);
+            self.discard_locals(loop_depth, false, false);
+            self.emit_loop(start);
             self.jumps.push((loop_depth, start, jump));
         } else {
             self.error_at(self.previous_token, "Continue can't be used outside loops");
         }
     }
     // ── Statements & declarations ────────────────────────────────────────────
-    fn statement(&mut self, chunk: &mut Chunk) {
+    fn statement(&mut self) {
         if self.match_token_type(TokenType::Print) {
-            self.print_statement(chunk);
+            self.print_statement();
         } else if self.match_token_type(TokenType::Break) {
-            self.break_statement(chunk);
+            self.break_statement();
         } else if self.match_token_type(TokenType::Continue) {
-            self.continue_statement(chunk);
+            self.continue_statement();
         } else if self.match_token_type(TokenType::For) {
-            self.for_statement(chunk);
+            self.for_statement();
         } else if self.match_token_type(TokenType::If) {
-            self.if_statement(chunk);
+            self.if_statement();
         } else if self.match_token_type(TokenType::While) {
-            self.while_statement(chunk)
+            self.while_statement()
         } else if self.match_token_type(TokenType::LeftBrace) {
             self.begin_scope();
-            self.block(chunk);
-            self.end_scope(false, chunk);
+            self.block();
+            self.end_scope(false);
         } else {
-            self.expression_statement(chunk);
+            self.expression_statement();
         }
     }
-    pub(super) fn declaration(&mut self, chunk: &mut Chunk) {
+    pub(super) fn declaration(&mut self) {
         if self.match_token_type(TokenType::Var) {
-            self.var_declaration(chunk);
+            self.var_declaration();
         } else {
-            self.statement(chunk);
+            self.statement();
         }
         if self.panic_mode {
             self.synchronize();
         }
     }
 
-    fn var_declaration(&mut self, chunk: &mut Chunk) {
+    fn var_declaration(&mut self) {
         self.consume(TokenType::Identifier, "Expected variable name");
         let token = self.previous_token;
-        let constant = if self.scope_depth == 0 { self.identifier_constant(chunk) } else { 0 };
+        let constant = if self.scope_depth == 0 { self.identifier_constant() } else { 0 };
 
         if self.match_token_type(TokenType::Equal) {
-            self.expression(chunk);
+            self.expression();
         } else {
-            self.emit_byte(OpCode::OpNil as u8, chunk);
+            self.emit_byte(OpCode::OpNil as u8);
         }
         self.consume(TokenType::Semicolon, "Expected ';' after variable declaration.");
 
@@ -459,7 +459,7 @@ impl Compiler {
             self.locals.last_mut().unwrap().is_initialized = true;
             return;
         }
-        self.emit_bytes(OpCode::OpDefineGlobal as u8, constant, chunk);
+        self.emit_bytes(OpCode::OpDefineGlobal as u8, constant);
     }
 
     fn declare_variable_late(&mut self, token: Token) {
@@ -475,22 +475,22 @@ impl Compiler {
         self.add_local(token);
     }
 
-    fn block(&mut self, chunk: &mut Chunk) {
+    fn block(&mut self) {
         while !self.check(TokenType::RightBrace) && !self.check(TokenType::EOF) {
-            self.declaration(chunk);
+            self.declaration();
         }
         self.consume(TokenType::RightBrace, "Expected '}' after block");
     }
 
-    fn print_statement(&mut self, chunk: &mut Chunk) {
-        self.expression(chunk);
+    fn print_statement(&mut self) {
+        self.expression();
         self.consume(TokenType::Semicolon, "Expected ';' after value.");
-        self.emit_byte(OpCode::OpPrint as u8, chunk);
+        self.emit_byte(OpCode::OpPrint as u8);
     }
 
-    fn expression_statement(&mut self, chunk: &mut Chunk) {
-        self.expression(chunk);
+    fn expression_statement(&mut self) {
+        self.expression();
         self.consume(TokenType::Semicolon, "Expected ';' after expression.");
-        self.emit_pop(chunk);
+        self.emit_pop();
     }
 }

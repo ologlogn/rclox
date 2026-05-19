@@ -1,5 +1,6 @@
 mod chunk;
 mod compiler;
+mod function;
 mod heap;
 mod scanner;
 mod token;
@@ -8,12 +9,14 @@ mod vm;
 
 use crate::chunk::Chunk;
 use crate::compiler::Compiler;
+use crate::function::{FunctionObject, FunctionType};
 use crate::scanner::Scanner;
+use crate::value::Object;
 use crate::vm::{InterpretResult, Vm};
-use rustyline::{DefaultEditor, error::ReadlineError, EditMode};
+use rustyline::config::Configurer;
+use rustyline::{DefaultEditor, EditMode, error::ReadlineError};
 use std::process::exit;
 use std::{env, fs};
-use rustyline::config::Configurer;
 
 fn main() {
     let mut vm = Vm::new();
@@ -27,15 +30,13 @@ fn main() {
         run_prompt(&mut vm);
     }
 }
-pub fn interpret(source: String, vm: &mut Vm) -> InterpretResult {
-    let mut chunk = Chunk::new();
+pub fn interpret(source: String, vm: &mut Vm, init_function: *mut Object) -> InterpretResult {
     let scanner = Scanner::new(source);
-    let mut parser = Compiler::new(scanner, vm);
-    if !parser.compile(&mut chunk) {
+    let mut compiler = Compiler::new(scanner, vm, init_function, FunctionType::TypeScript);
+    if !compiler.compile() {
         InterpretResult::InterpretCompileError
     } else {
-        println!("{:?}", chunk);
-        match vm.interpret(&chunk) {
+        match vm.interpret(init_function) {
             Ok(()) => InterpretResult::InterpretOk,
             Err(err) => err,
         }
@@ -45,6 +46,8 @@ pub fn interpret(source: String, vm: &mut Vm) -> InterpretResult {
 fn run_prompt(vm: &mut Vm) {
     let mut rl = DefaultEditor::new().expect("failed to init editor");
     rl.set_edit_mode(EditMode::Vi);
+    let chunk = Chunk::new();
+    let init_function = vm.allocate_function(FunctionObject::new(chunk, 0, ""));
     loop {
         match rl.readline("> ") {
             Ok(line) => {
@@ -53,7 +56,7 @@ fn run_prompt(vm: &mut Vm) {
                     continue;
                 }
                 rl.add_history_entry(cmd).ok();
-                interpret(cmd.to_string(), vm);
+                interpret(cmd.to_string(), vm, init_function);
             }
             Err(ReadlineError::Interrupted | ReadlineError::Eof) => break,
             Err(err) => {
@@ -66,7 +69,9 @@ fn run_prompt(vm: &mut Vm) {
 
 fn run_file(file_name: String, vm: &mut Vm) {
     let content: String = fs::read_to_string(&file_name).unwrap();
-    let result = interpret(content, vm);
+    let chunk = Chunk::new();
+    let init_function = vm.allocate_function(FunctionObject::new(chunk, 0, ""));
+    let result = interpret(content, vm, init_function);
     match result {
         InterpretResult::InterpretOk => exit(0),
         InterpretResult::InterpretCompileError => exit(65),

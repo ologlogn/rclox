@@ -1,5 +1,4 @@
 use super::Compiler;
-use crate::chunk::Chunk;
 use crate::token::TokenType;
 
 // ── Precedence ───────────────────────────────────────────────────────────────
@@ -42,7 +41,7 @@ impl TryFrom<u8> for Precedence {
 
 // ── Parse rules ──────────────────────────────────────────────────────────────
 
-pub type ParseFn = fn(&mut Compiler, &mut Chunk);
+pub type ParseFn = fn(&mut Compiler);
 
 pub struct ParseRule {
     pub prefix: Option<ParseFn>,

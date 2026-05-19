@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::ops::{Div, Mul, Sub};
+use crate::function::FunctionObject;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -22,8 +23,7 @@ impl Display for Value {
                     let obj = &**ptr;
                     match &obj.obj_type {
                         ObjectType::String(s) => write!(f, "{}", s),
-                        // Later
-                        // ObjectType::Function(fun) => write!(f, "<fn {}>", fun.name),
+                        ObjectType::Function(fun) => write!(f, "<fun {}>", fun.name),
                     }
                 }
             }
@@ -48,7 +48,9 @@ pub struct Object {
 }
 pub enum ObjectType {
     String(String),
+    Function(FunctionObject),
 }
+
 
 impl Value {
     pub fn is_falsey(&self) -> bool {
