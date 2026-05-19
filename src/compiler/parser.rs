@@ -1,5 +1,6 @@
 use super::Compiler;
 use crate::chunk::{Chunk, OpCode};
+use crate::compiler::frame::FunctionCompiler;
 use crate::compiler::rules::{Precedence, get_rule};
 use crate::function::{FunctionObject, FunctionType};
 use crate::scanner::Scanner;
@@ -364,7 +365,7 @@ impl Compiler {
     fn function(&mut self, function_type: FunctionType) {
         let name = self.parser.scanner.get_lexeme(self.parser.previous_token).to_string();
         let func = unsafe { self.vm.as_mut().unwrap().allocate_function(FunctionObject::new(Chunk::new(), 0, &name)) };
-        self.frames.push(crate::compiler::frame::FunctionCompiler::new(func, function_type));
+        self.frames.push(FunctionCompiler::new(func, function_type));
         self.begin_scope();
 
         self.parser.consume(TokenType::LeftParen, "Expect '(' after function name.");
@@ -536,19 +537,8 @@ impl Compiler {
         } else if self.parser.match_token_type(TokenType::While) {
             self.while_statement();
         } else if self.parser.match_token_type(TokenType::Return) {
-            if self.frames.last().unwrap().function_type == FunctionType::TypeScript {
-                self.parser.error_at(self.parser.previous_token, "Can't use return outside a function")
-            }
-            if self.parser.match_token_type(TokenType::Semicolon) {
-                self.emit_byte(OpCode::OpNil as u8);
-                self.emit_return();
-            } else {
-                self.expression();
-                self.parser.consume(TokenType::Semicolon, "Expect ';' after return value.");
-                self.emit_return();
-            }
-        }
-        else if self.parser.match_token_type(TokenType::LeftBrace) {
+            self.return_statement();
+        } else if self.parser.match_token_type(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
             self.end_scope(false);
@@ -556,7 +546,19 @@ impl Compiler {
             self.expression_statement();
         }
     }
-
+    fn return_statement(&mut self) {
+        if self.frames.last().unwrap().function_type == FunctionType::TypeScript {
+            self.parser.error_at(self.parser.previous_token, "Can't use return outside a function")
+        }
+        if self.parser.match_token_type(TokenType::Semicolon) {
+            self.emit_byte(OpCode::OpNil as u8);
+            self.emit_return();
+        } else {
+            self.expression();
+            self.parser.consume(TokenType::Semicolon, "Expect ';' after return value.");
+            self.emit_return();
+        }
+    }
     pub(super) fn declaration(&mut self) {
         if self.parser.match_token_type(TokenType::Var) {
             self.var_declaration();
