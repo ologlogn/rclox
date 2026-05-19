@@ -53,13 +53,11 @@ impl Vm {
     }
 
     fn read_constant(&mut self, chunk: &Chunk) -> Value {
-        let index = self.read_byte(chunk);
-        chunk.read_constant(index as usize)
+        chunk.read_constant(self.read_byte(chunk) as usize)
     }
 
     fn read_string(&mut self, chunk: &Chunk) -> String {
-        let constant = self.read_constant(chunk);
-        format!("{}", constant)
+        format!("{}", self.read_constant(chunk))
     }
 
     // ── Stack helpers ────────────────────────────────────────────────────────

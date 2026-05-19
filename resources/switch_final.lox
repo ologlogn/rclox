@@ -227,3 +227,172 @@ print result;  // expected: 25
 print "Test 20 (grand total): ";
 print (result + computed + sum + p1 + p2 + p3 + p4);
 // expected: 25 + 1103 + 100 + 100 + 200 + 0 + 50 = 1578
+
+// ── Test 21: switch-on-switch (discriminant is switch result) ────────────────
+var ca = switch (switch (1) { case 1 => { yield 2; } default => { yield 0; } }) {
+  case 1 => { yield "one"; }
+  case 2 => { yield "two"; }
+  default => { yield "other"; }
+};
+print ca; // expected: two
+
+// ── Test 22: switch result as for-loop seed ──────────────────────────────────
+var csum = 0;
+var cstart = switch (true) {
+  case true  => { yield 1; }
+  case false => { yield 0; }
+  default    => { yield -1; }
+};
+for (var fi = cstart; fi <= 5; fi = fi + 1) {
+  csum = csum + fi;
+}
+print csum; // expected: 15
+
+// ── Test 23: switch result as for-loop bound ─────────────────────────────────
+var cbound = switch (3) {
+  case 1 => { yield 10; }
+  case 2 => { yield 20; }
+  case 3 => { yield 4; }
+  default => { yield 0; }
+};
+var cprod = 1;
+for (var fj = 1; fj <= cbound; fj = fj + 1) {
+  cprod = cprod * fj;
+}
+print cprod; // expected: 24 (4!)
+
+// ── Test 24: break inside while containing switch ────────────────────────────
+var ci = 0;
+var cfound = nil;
+while (ci < 100) {
+  cfound = switch (ci) {
+    case 7  => { yield "seven"; }
+    case 13 => { yield "thirteen"; }
+    default => { yield nil; }
+  };
+  if (cfound != nil) { break; }
+  ci = ci + 1;
+}
+print ci;     // expected: 7
+print cfound; // expected: seven
+
+// ── Test 25: continue inside while, skip multiples of 3 ─────────────────────
+var ctotal = 0;
+var cn = 0;
+while (cn < 10) {
+  cn = cn + 1;
+  var cskip = switch (cn) {
+    case 3 => { yield true; }
+    case 6 => { yield true; }
+    case 9 => { yield true; }
+    default => { yield false; }
+  };
+  if (cskip) { continue; }
+  ctotal = ctotal + cn;
+}
+print ctotal; // expected: 37
+
+// ── Test 26: three-level nested switch ──────────────────────────────────────
+var cx = 2;
+var cy = 3;
+var cz = 1;
+var cdeep = switch (cx) {
+  case 1 => { yield "x1"; }
+  case 2 => {
+    var cmid = switch (cy) {
+      case 1 => { yield "y1"; }
+      case 2 => { yield "y2"; }
+      case 3 => {
+        var cinner = switch (cz) {
+          case 1 => { yield 999; }
+          case 2 => { yield 888; }
+          default => { yield 0; }
+        };
+        yield cinner;
+      }
+      default => { yield -1; }
+    };
+    yield cmid;
+  }
+  default => { yield "xX"; }
+};
+print cdeep; // expected: 999
+
+// ── Test 27: switch result in boolean expression ─────────────────────────────
+var cval = switch (5) {
+  case 5 => { yield 100; }
+  default => { yield 0; }
+};
+print (cval > 50 and cval < 200); // expected: true
+
+// ── Test 28: accumulate in loop, then switch on result ───────────────────────
+var cacc = 0;
+for (var k = 1; k <= 6; k = k + 1) {
+  cacc = cacc + switch (k) {
+    case 1 => { yield 1; }
+    case 2 => { yield 2; }
+    case 3 => { yield 3; }
+    case 4 => { yield 4; }
+    case 5 => { yield 5; }
+    case 6 => { yield 6; }
+    default => { yield 0; }
+  };
+}
+var cgrade = switch (cacc) {
+  case 21 => { yield "perfect"; }
+  case 20 => { yield "close"; }
+  default => { yield "off"; }
+};
+print cgrade; // expected: perfect
+
+// ── Test 29: switch on string equality ──────────────────────────────────────
+var clang = "lox";
+var crating = switch (clang) {
+  case "python" => { yield 8; }
+  case "lox"    => { yield 10; }
+  case "java"   => { yield 6; }
+  default       => { yield 0; }
+};
+print crating; // expected: 10
+
+// ── Test 30: many locals in case, stack pressure ─────────────────────────────
+var cresult = switch (1) {
+  case 1 => {
+    var la = 1; var lb = 2; var lc = 3; var ld = 4; var le = 5;
+    var lf = 6; var lg = 7; var lh = 8; var li = 9; var lj = 10;
+    var ltotal = la + lb + lc + ld + le + lf + lg + lh + li + lj;
+    yield ltotal;
+  }
+  default => { yield 0; }
+};
+print cresult; // expected: 55
+
+// ── Test 31: switch default exhaustiveness ───────────────────────────────────
+var coutcomes = 0;
+for (var t = 0; t <= 5; t = t + 1) {
+  var cmatched = switch (t) {
+    case 1 => { yield 1; }
+    case 2 => { yield 1; }
+    case 3 => { yield 1; }
+    default => { yield 0; }
+  };
+  coutcomes = coutcomes + cmatched;
+}
+print coutcomes; // expected: 3
+
+// ── Test 32: switch result re-switched ───────────────────────────────────────
+var cfirst = switch (7) {
+  case 7 => { yield 42; }
+  default => { yield -1; }
+};
+var csecond = switch (cfirst) {
+  case 42 => { yield "answer"; }
+  case -1 => { yield "none"; }
+  default => { yield "unknown"; }
+};
+print csecond; // expected: answer
+
+// ── Test 33: grand total (complex section) ───────────────────────────────────
+// cval=100, cacc=21, crating=10, cresult=55, coutcomes=3, cfirst=42
+print (cval + cacc + crating + cresult + coutcomes + cfirst);
+// expected: 231

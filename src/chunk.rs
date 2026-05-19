@@ -1,4 +1,5 @@
 use crate::value::Value;
+use std::collections::HashMap;
 use std::fmt;
 
 // ── OpCode ───────────────────────────────────────────────────────────────────
@@ -77,6 +78,7 @@ pub struct Chunk {
     code: Vec<u8>,
     constants: Vec<Value>,
     lines: Vec<usize>,
+    constant_index: HashMap<(u8, u64), u8>,
 }
 
 impl Chunk {
@@ -85,6 +87,7 @@ impl Chunk {
             code: vec![],
             constants: vec![],
             lines: vec![],
+            constant_index: HashMap::new(),
         }
     }
 
@@ -104,6 +107,20 @@ impl Chunk {
     }
 
     pub fn write_constant(&mut self, value: Value) -> u8 {
+        let key = match &value {
+            Value::Number(n) => Some((0u8, n.to_bits())),
+            Value::Object(ptr) => Some((1u8, *ptr as u64)),
+            _ => None,
+        };
+        if let Some(k) = key {
+            if let Some(&idx) = self.constant_index.get(&k) {
+                return idx;
+            }
+            let idx = self.constants.len() as u8;
+            self.constants.push(value);
+            self.constant_index.insert(k, idx);
+            return idx;
+        }
         self.constants.push(value);
         (self.constants.len() - 1) as u8
     }
