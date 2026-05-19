@@ -30,16 +30,16 @@ fn main() {
         run_prompt(&mut vm);
     }
 }
-pub fn interpret(source: String, vm: &mut Vm, init_function: *mut Object) -> InterpretResult {
+pub fn interpret(source: String, vm: &mut Vm) -> InterpretResult {
     let scanner = Scanner::new(source);
-    let mut compiler = Compiler::new(scanner, vm, init_function, FunctionType::TypeScript);
-    if !compiler.compile() {
-        InterpretResult::InterpretCompileError
-    } else {
-        match vm.interpret(init_function) {
+    let mut compiler = Compiler::new(scanner, vm, FunctionType::TypeScript);
+    if let Some(func) = compiler.compile() {
+        match vm.interpret(func) {
             Ok(()) => InterpretResult::InterpretOk,
             Err(err) => err,
         }
+    } else {
+        InterpretResult::InterpretCompileError
     }
 }
 
@@ -56,7 +56,7 @@ fn run_prompt(vm: &mut Vm) {
                     continue;
                 }
                 rl.add_history_entry(cmd).ok();
-                interpret(cmd.to_string(), vm, init_function);
+                interpret(cmd.to_string(), vm);
             }
             Err(ReadlineError::Interrupted | ReadlineError::Eof) => break,
             Err(err) => {
@@ -69,9 +69,7 @@ fn run_prompt(vm: &mut Vm) {
 
 fn run_file(file_name: String, vm: &mut Vm) {
     let content: String = fs::read_to_string(&file_name).unwrap();
-    let chunk = Chunk::new();
-    let init_function = vm.allocate_function(FunctionObject::new(chunk, 0, ""));
-    let result = interpret(content, vm, init_function);
+    let result = interpret(content, vm);
     match result {
         InterpretResult::InterpretOk => exit(0),
         InterpretResult::InterpretCompileError => exit(65),

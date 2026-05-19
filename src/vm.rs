@@ -49,6 +49,7 @@ impl Vm {
         self.call_stack.push(CallFrame { function, ip: 0, stack_base });
     }
     pub fn interpret(&mut self, function: *mut Object) -> Result<(), InterpretResult> {
+        self.stack.push(Value::Object(function));
         self.push_frame(function, 0);
         self.run()
     }
