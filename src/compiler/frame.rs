@@ -1,5 +1,5 @@
 use crate::function::FunctionType;
-use crate::token::Token;
+use crate::token::{Token, TokenType};
 use crate::value::Object;
 
 pub struct Local {
@@ -18,7 +18,6 @@ pub struct FunctionCompiler {
 
 impl FunctionCompiler {
     pub fn new(function: *mut Object, function_type: FunctionType) -> Self {
-        use crate::token::TokenType;
         let locals = vec![Local {
             token: Token {
                 token_type: TokenType::Identifier,

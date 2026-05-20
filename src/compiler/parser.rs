@@ -274,7 +274,7 @@ impl Compiler {
     fn discard_locals(&mut self, target_depth: usize, modify_compiler_state: bool, with_value: bool) {
         let mut pop_count = 0;
         {
-            let locals = &self.frames.last().unwrap().locals;
+            let locals = &self.frame().locals;
             for local in locals.iter().rev() {
                 if local.depth <= target_depth {
                     break;
@@ -284,7 +284,7 @@ impl Compiler {
         }
         if modify_compiler_state {
             for _ in 0..pop_count {
-                self.frames.last_mut().unwrap().locals.pop();
+                self.frame().locals.pop();
             }
         }
         if pop_count > 0 {
@@ -297,22 +297,22 @@ impl Compiler {
     }
 
     fn begin_scope(&mut self) {
-        self.frames.last_mut().unwrap().scope_depth += 1;
+        self.frame().scope_depth += 1;
     }
 
     fn end_scope(&mut self, with_value: bool) {
-        self.frames.last_mut().unwrap().scope_depth -= 1;
-        let depth = self.frames.last().unwrap().scope_depth;
+        self.frame().scope_depth -= 1;
+        let depth = self.frame().scope_depth;
         self.discard_locals(depth, true, with_value);
     }
 
     fn resolve_local(&mut self) -> (bool, u8) {
         let token = self.parser.previous_token;
         let mut found_uninitialized = false;
-        let len = self.frames.last().unwrap().locals.len();
+        let len = self.frame().locals.len();
         for i in (0..len).rev() {
-            let local_token = self.frames.last().unwrap().locals[i].token;
-            let local_is_initialized = self.frames.last().unwrap().locals[i].is_initialized;
+            let local_token = self.frame().locals[i].token;
+            let local_is_initialized = self.frame().locals[i].is_initialized;
             if self.same_identifier(local_token, token) {
                 if !local_is_initialized {
                     found_uninitialized = true;
@@ -336,13 +336,13 @@ impl Compiler {
     fn identifier_constant(&mut self) -> u8 {
         let name = self.parser.scanner.get_lexeme(self.parser.previous_token).to_string();
         let var_name = unsafe { self.vm.as_mut().unwrap().allocate_string(&name) };
-        self.current_chunk().write_constant(Value::Object(var_name))
+        self.chunk().write_constant(Value::Object(var_name))
     }
 
     fn parse_variable(&mut self, message: &str) -> u8 {
         self.parser.consume(TokenType::Identifier, message);
         let token = self.parser.previous_token;
-        let scope_depth = self.frames.last().unwrap().scope_depth;
+        let scope_depth = self.frame().scope_depth;
         if scope_depth > 0 {
             self.declare_variable_late(token);
             return 0;
@@ -351,20 +351,20 @@ impl Compiler {
     }
 
     fn mark_initialized(&mut self) {
-        if self.frames.last().unwrap().scope_depth == 0 {
+        if self.frame().scope_depth == 0 {
             return;
         }
-        self.frames.last_mut().unwrap().locals.last_mut().unwrap().is_initialized = true;
+        self.frame().locals.last_mut().unwrap().is_initialized = true;
     }
 
     fn define_variable(&mut self, global: u8) {
-        if self.frames.last().unwrap().scope_depth > 0 {
+        if self.frame().scope_depth > 0 {
             return;
         }
         self.emit_bytes(OpCode::OpDefineGlobal as u8, global);
     }
 
-    fn function(&mut self, function_type: FunctionType) {
+    fn function_statement(&mut self, function_type: FunctionType) {
         let name = self.parser.scanner.get_lexeme(self.parser.previous_token).to_string();
         let func = unsafe { self.vm.as_mut().unwrap().allocate_function(FunctionObject::new(Chunk::new(), 0, &name)) };
         self.frames.push(FunctionCompiler::new(func, function_type));
@@ -374,7 +374,7 @@ impl Compiler {
         if !self.parser.check(TokenType::RightParen) {
             loop {
                 unsafe {
-                    match &mut (*self.frames.last().unwrap().function).obj_type {
+                    match &mut (*self.function()).obj_type {
                         ObjectType::Function(f) => f.arity += 1,
                         _ => unreachable!(),
                     }
@@ -392,7 +392,7 @@ impl Compiler {
         self.block();
 
         let compiled = self.end_compiler();
-        let idx = self.current_chunk().write_constant(Value::Object(compiled.unwrap()));
+        let idx = self.chunk().write_constant(Value::Object(compiled.unwrap()));
         self.emit_bytes(OpCode::OpConstant as u8, idx);
     }
 
@@ -417,8 +417,8 @@ impl Compiler {
 
     fn for_statement(&mut self) {
         self.begin_scope();
-        let scope_depth = self.frames.last().unwrap().scope_depth;
-        self.frames.last_mut().unwrap().jumps.push((scope_depth, 0, Vec::new()));
+        let scope_depth = self.frame().scope_depth;
+        self.frame().jumps.push((scope_depth, 0, Vec::new()));
         self.parser.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
         if self.parser.match_token_type(TokenType::Semicolon) {
         } else if self.parser.match_token_type(TokenType::Var) {
@@ -426,8 +426,8 @@ impl Compiler {
         } else {
             self.expression_statement();
         }
-        let mut loop_start = self.current_chunk().count();
-        self.frames.last_mut().unwrap().jumps.last_mut().unwrap().1 = loop_start;
+        let mut loop_start = self.chunk().count();
+        self.frame().jumps.last_mut().unwrap().1 = loop_start;
         let mut is_conditional = false;
         let mut exit_jump = 0;
         if !self.parser.match_token_type(TokenType::Semicolon) {
@@ -439,13 +439,13 @@ impl Compiler {
         }
         if !self.parser.match_token_type(TokenType::RightParen) {
             let body_jump = self.emit_jump(OpCode::OpJump);
-            let increment_start = self.current_chunk().count();
+            let increment_start = self.chunk().count();
             self.expression();
             self.emit_pop();
             self.parser.consume(TokenType::RightParen, "Expected ')' after clauses.");
             self.emit_loop(loop_start);
             loop_start = increment_start;
-            self.frames.last_mut().unwrap().jumps.last_mut().unwrap().1 = loop_start;
+            self.frame().jumps.last_mut().unwrap().1 = loop_start;
             self.patch_jump(body_jump);
         }
         self.statement();
@@ -454,7 +454,7 @@ impl Compiler {
             self.patch_jump(exit_jump);
             self.emit_pop();
         }
-        let (_, _, breaks) = self.frames.last_mut().unwrap().jumps.pop().unwrap();
+        let (_, _, breaks) = self.frame().jumps.pop().unwrap();
         for break_ in breaks {
             self.patch_jump(break_);
         }
@@ -462,9 +462,9 @@ impl Compiler {
     }
 
     fn while_statement(&mut self) {
-        let loop_start = self.current_chunk().count();
-        let scope_depth = self.frames.last().unwrap().scope_depth;
-        self.frames.last_mut().unwrap().jumps.push((scope_depth, loop_start, Vec::new()));
+        let loop_start = self.chunk().count();
+        let scope_depth = self.frame().scope_depth;
+        self.frame().jumps.push((scope_depth, loop_start, Vec::new()));
         self.parser.consume(TokenType::LeftParen, "Expected '(' after 'while'.");
         self.expression();
         self.parser.consume(TokenType::RightParen, "Expected ')' after condition.");
@@ -474,7 +474,7 @@ impl Compiler {
         self.emit_loop(loop_start);
         self.patch_jump(exit_jump);
         self.emit_pop();
-        let (_, _, breaks) = self.frames.last_mut().unwrap().jumps.pop().unwrap();
+        let (_, _, breaks) = self.frame().jumps.pop().unwrap();
         for break_ in breaks {
             self.patch_jump(break_);
         }
@@ -498,12 +498,12 @@ impl Compiler {
 
     fn break_statement(&mut self) {
         self.parser.consume(TokenType::Semicolon, "Expected ';' after break.");
-        let jump_info = self.frames.last_mut().unwrap().jumps.pop();
+        let jump_info = self.frame().jumps.pop();
         if let Some((loop_depth, start, mut jump)) = jump_info {
             self.discard_locals(loop_depth, false, false);
             let emit_jump = self.emit_jump(OpCode::OpJump);
             jump.push(emit_jump);
-            self.frames.last_mut().unwrap().jumps.push((loop_depth, start, jump));
+            self.frame().jumps.push((loop_depth, start, jump));
         } else {
             let prev = self.parser.previous_token;
             self.parser.error_at(prev, "Break can't be used outside loops");
@@ -512,11 +512,11 @@ impl Compiler {
 
     fn continue_statement(&mut self) {
         self.parser.consume(TokenType::Semicolon, "Expected ';' after continue.");
-        let jump_info = self.frames.last_mut().unwrap().jumps.pop();
+        let jump_info = self.frame().jumps.pop();
         if let Some((loop_depth, start, jump)) = jump_info {
             self.discard_locals(loop_depth, false, false);
             self.emit_loop(start);
-            self.frames.last_mut().unwrap().jumps.push((loop_depth, start, jump));
+            self.frame().jumps.push((loop_depth, start, jump));
         } else {
             let prev = self.parser.previous_token;
             self.parser.error_at(prev, "Continue can't be used outside loops");
@@ -549,7 +549,7 @@ impl Compiler {
         }
     }
     fn return_statement(&mut self) {
-        if self.frames.last().unwrap().function_type == FunctionType::TypeScript {
+        if self.frame().function_type == FunctionType::TypeScript {
             self.parser.error_at(self.parser.previous_token, "Can't use return outside a function")
         }
         if self.parser.match_token_type(TokenType::Semicolon) {
@@ -577,14 +577,14 @@ impl Compiler {
     fn fun_declaration(&mut self) {
         let name = self.parse_variable("Expect function name.");
         self.mark_initialized();
-        self.function(FunctionType::TypeFunction);
+        self.function_statement(FunctionType::TypeFunction);
         self.define_variable(name);
     }
 
     fn var_declaration(&mut self) {
         self.parser.consume(TokenType::Identifier, "Expected variable name");
         let token = self.parser.previous_token;
-        let scope_depth = self.frames.last().unwrap().scope_depth;
+        let scope_depth = self.frame().scope_depth;
         let constant = if scope_depth == 0 { self.identifier_constant() } else { 0 };
 
         if self.parser.match_token_type(TokenType::Equal) {
@@ -594,7 +594,7 @@ impl Compiler {
         }
         self.parser.consume(TokenType::Semicolon, "Expected ';' after variable declaration.");
 
-        if self.frames.last().unwrap().scope_depth > 0 {
+        if self.frame().scope_depth > 0 {
             self.declare_variable_late(token);
             self.mark_initialized();
             return;
@@ -603,11 +603,11 @@ impl Compiler {
     }
 
     fn declare_variable_late(&mut self, token: Token) {
-        let scope_depth = self.frames.last().unwrap().scope_depth;
-        let len = self.frames.last().unwrap().locals.len();
+        let scope_depth = self.frame().scope_depth;
+        let len = self.frame().locals.len();
         for i in (0..len).rev() {
-            let local_depth = self.frames.last().unwrap().locals[i].depth;
-            let local_token = self.frames.last().unwrap().locals[i].token;
+            let local_depth = self.frame().locals[i].depth;
+            let local_token = self.frame().locals[i].token;
             if local_depth < scope_depth {
                 break;
             }
@@ -616,7 +616,7 @@ impl Compiler {
                 return;
             }
         }
-        self.current_frame().add_local(token);
+        self.frame().add_local(token);
     }
 
     fn block(&mut self) {

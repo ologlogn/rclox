@@ -15,15 +15,15 @@ use parser::Parser;
 // ── Types ────────────────────────────────────────────────────────────────────
 
 pub struct Compiler {
-    pub(crate) parser: Parser,
-    pub(crate) frames: Vec<FunctionCompiler>,
-    pub(crate) vm: *mut Vm,
+    pub parser: Parser,
+    pub frames: Vec<FunctionCompiler>,
+    pub vm: *mut Vm,
 }
 
 // ── Compiler ─────────────────────────────────────────────────────────────────
 
 impl Compiler {
-    pub(crate) fn new(scanner: Scanner, vm: &mut Vm, function_type: FunctionType) -> Self {
+    pub fn new(scanner: Scanner, vm: &mut Vm, function_type: FunctionType) -> Self {
         let chunk = Chunk::new();
         let init_function = vm.allocate_function(FunctionObject::new(chunk, 0, ""));
         Compiler {
@@ -33,12 +33,16 @@ impl Compiler {
         }
     }
 
-    pub(crate) fn current_frame(&mut self) -> &mut FunctionCompiler {
+    pub fn frame(&mut self) -> &mut FunctionCompiler {
         self.frames.last_mut().expect("compiler stack should not be empty")
     }
 
-    pub(crate) fn current_chunk(&mut self) -> &mut Chunk {
-        let function = self.frames.last().expect("compiler stack should not be empty").function;
+    pub fn function(&mut self) -> *mut Object {
+        self.frame().function
+    }
+
+    pub fn chunk(&mut self) -> &mut Chunk {
+        let function = self.function();
         unsafe {
             match &mut (*function).obj_type {
                 ObjectType::Function(func) => &mut func.chunk,
@@ -57,12 +61,14 @@ impl Compiler {
         self.end_compiler()
     }
 
-    pub(crate) fn end_compiler(&mut self) -> Option<*mut Object> {
+    pub fn end_compiler(&mut self) -> Option<*mut Object> {
         self.emit_byte(OpCode::OpNil as u8);
         self.emit_return();
-        println!("{:?}", self.current_chunk());
+        println!("{:?}", self.chunk());
         if !self.parser.had_error {
-            Some(self.frames.pop().unwrap().function)
+            let fun = self.function();
+            self.frames.pop();
+            Some(fun)
         } else {
             None
         }
@@ -70,44 +76,44 @@ impl Compiler {
 
     // ── Emission ─────────────────────────────────────────────────────────────
 
-    pub(crate) fn emit_byte(&mut self, byte: u8) {
+    pub fn emit_byte(&mut self, byte: u8) {
         let line = self.parser.previous_token.line;
-        self.current_chunk().write_byte(byte, line);
+        self.chunk().write_byte(byte, line);
     }
 
-    pub(crate) fn emit_bytes(&mut self, byte1: u8, byte2: u8) {
+    pub fn emit_bytes(&mut self, byte1: u8, byte2: u8) {
         self.emit_byte(byte1);
         self.emit_byte(byte2);
     }
 
-    pub(crate) fn emit_constant(&mut self, value: Value) {
-        let index = self.current_chunk().write_constant(value);
+    pub fn emit_constant(&mut self, value: Value) {
+        let index = self.chunk().write_constant(value);
         self.emit_bytes(OpCode::OpConstant as u8, index);
     }
 
-    pub(crate) fn emit_return(&mut self) {
+    pub fn emit_return(&mut self) {
         self.emit_byte(OpCode::OpReturn as u8);
     }
 
-    pub(crate) fn emit_loop(&mut self, loop_start: usize) {
+    pub fn emit_loop(&mut self, loop_start: usize) {
         self.emit_byte(OpCode::OpLoop as u8);
-        let offset = (self.current_chunk().count() - loop_start + 2) as u16;
+        let offset = (self.chunk().count() - loop_start + 2) as u16;
         self.emit_bytes((offset >> 8 & 0xff) as u8, (offset & 0xff) as u8);
     }
 
-    pub(crate) fn emit_jump(&mut self, op_code: OpCode) -> usize {
+    pub fn emit_jump(&mut self, op_code: OpCode) -> usize {
         self.emit_byte(op_code as u8);
         self.emit_bytes(0xff, 0xff);
-        self.current_chunk().count() - 2
+        self.chunk().count() - 2
     }
 
-    pub(crate) fn patch_jump(&mut self, offset: usize) {
-        let jump = (self.current_chunk().count() - offset - 2) as u16;
-        self.current_chunk().write_byte_at(offset, (jump >> 8) as u8);
-        self.current_chunk().write_byte_at(offset + 1, (jump & 0xff) as u8);
+    pub fn patch_jump(&mut self, offset: usize) {
+        let jump = (self.chunk().count() - offset - 2) as u16;
+        self.chunk().write_byte_at(offset, (jump >> 8) as u8);
+        self.chunk().write_byte_at(offset + 1, (jump & 0xff) as u8);
     }
 
-    pub(crate) fn emit_pop(&mut self) {
+    pub fn emit_pop(&mut self) {
         self.emit_byte(OpCode::OpPop as u8);
     }
 }
