@@ -179,14 +179,12 @@ impl Compiler {
     }
 
     pub(super) fn variable(&mut self) {
-        let (is_local, local_idx) = self.resolve_local();
-        let (get_op, set_op, arg) = if is_local {
-            (OpCode::OpGetLocal, OpCode::OpSetLocal, local_idx)
-        } else {
-            let global_idx = self.identifier_constant();
-            (OpCode::OpGetGlobal, OpCode::OpSetGlobal, global_idx)
-        };
-        if self.parser.can_assign && self.parser.match_token_type(TokenType::Equal) {
+        let (get_op, set_op, arg) = self.resolve_();
+        if self.parser.match_token_type(TokenType::PlusPlus) {
+            self.postfix_(get_op, set_op, OpCode::OpAdd, arg);
+        } else if self.parser.match_token_type(TokenType::MinusMinus) {
+            self.postfix_(get_op, set_op, OpCode::OpSubtract, arg);
+        } else if self.parser.can_assign && self.parser.match_token_type(TokenType::Equal) {
             self.expression();
             self.emit_bytes(set_op as u8, arg);
         } else {
@@ -207,6 +205,27 @@ impl Compiler {
             TokenType::Bang => self.emit_byte(OpCode::OpNot as u8),
             _ => unreachable!("Unknown unary operator"),
         }
+    }
+    pub(super) fn prefix_(&mut self) {
+        let op = match self.parser.previous_token.token_type {
+            TokenType::PlusPlus => OpCode::OpAdd,
+            TokenType::MinusMinus => OpCode::OpSubtract,
+            _ => unreachable!("Unknown prefix operator"),
+        };
+        self.parser.advance();
+        let (get_op, set_op, arg) = self.resolve_();
+        self.emit_bytes(get_op as u8, arg);
+        self.emit_constant(Value::Number(1.0));
+        self.emit_byte(op as u8);
+        self.emit_bytes(set_op as u8, arg);
+    }
+    pub(super) fn postfix_(&mut self, get_op: OpCode, set_op: OpCode, op: OpCode, arg: u8) {
+        self.emit_bytes(get_op as u8, arg); // [4]
+        self.emit_byte(OpCode::OpDup as u8); // [4, 4]
+        self.emit_constant(Value::Number(1.0)); // [4, 4, 1]
+        self.emit_byte(op as u8); // [4, 5]
+        self.emit_bytes(set_op as u8, arg); // [4, 5] → sets, leaves 5
+        self.emit_byte(OpCode::OpPop as u8); // [4]
     }
 
     pub(super) fn binary(&mut self) {
@@ -297,6 +316,17 @@ impl Compiler {
     }
 
     // ── Scope & locals ────────────────────────────────────────────────────────
+
+    fn resolve_(&mut self) -> (OpCode, OpCode, u8) {
+        let (is_local, local_idx) = self.resolve_local();
+        let (get_op, set_op, arg) = if is_local {
+            (OpCode::OpGetLocal, OpCode::OpSetLocal, local_idx)
+        } else {
+            let global_idx = self.identifier_constant();
+            (OpCode::OpGetGlobal, OpCode::OpSetGlobal, global_idx)
+        };
+        (get_op, set_op, arg)
+    }
 
     fn discard_locals(&mut self, target_depth: usize, modify_compiler_state: bool, with_value: bool) {
         let mut pop_count = 0;

@@ -192,8 +192,20 @@ impl Scanner {
                 '}' => self.make_token(TokenType::RightBrace),
                 ',' => self.make_token(TokenType::Comma),
                 '.' => self.make_token(TokenType::Dot),
-                '-' => self.make_token(TokenType::Minus),
-                '+' => self.make_token(TokenType::Plus),
+                '-' => {
+                    if self.if_next_char_then_advance('-') {
+                        self.make_token(TokenType::MinusMinus)
+                    } else {
+                        self.make_token(TokenType::Minus)
+                    }
+                }
+                '+' => {
+                    if self.if_next_char_then_advance('+') {
+                        self.make_token(TokenType::PlusPlus)
+                    } else {
+                        self.make_token(TokenType::Plus)
+                    }
+                }
                 ';' => self.make_token(TokenType::Semicolon),
                 '*' => self.make_token(TokenType::Star),
                 '/' => self.make_token(TokenType::Slash),

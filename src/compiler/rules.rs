@@ -73,6 +73,8 @@ pub fn get_rule(token_type: TokenType) -> ParseRule {
         TokenType::And => ParseRule::new(None, Some(Compiler::and_), Precedence::And),
         TokenType::Or => ParseRule::new(None, Some(Compiler::or_), Precedence::Or),
         TokenType::Switch => ParseRule::new(Some(Compiler::switch), None, Precedence::None),
+        TokenType::PlusPlus => ParseRule::new(Some(Compiler::prefix_), None, Precedence::Unary),
+        TokenType::MinusMinus => ParseRule::new(Some(Compiler::prefix_), None, Precedence::Unary),
         _ => ParseRule::new(None, None, Precedence::None),
     }
 }

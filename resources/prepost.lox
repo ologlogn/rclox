@@ -1,0 +1,33 @@
+// 1. basic prefix
+var a = 4;
+++a;
+print a; // expect 5
+
+// 2. basic postfix
+var b = 4;
+b++;
+print b; // expect 5
+
+// 3. prefix as expression — new value
+var c = 4;
+var d = ++c;
+print c; // expect 5
+print d; // expect 5
+
+// 4. postfix as expression — old value
+var e = 4;
+var f = e++;
+print e; // expect 5
+print f; // expect 4
+
+// 5. in a condition
+var i = 0;
+while (i++ < 3) {
+    print i; // expect 1, 2, 3
+}
+
+// 6. prefix in a condition
+var j = 0;
+while (++j < 4) {
+    print j; // expect 1, 2, 3
+}
