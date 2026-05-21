@@ -2,14 +2,14 @@ mod chunk;
 mod compiler;
 mod function;
 mod heap;
+mod native;
 mod scanner;
 mod token;
 mod value;
 mod vm;
-mod native;
 
 use crate::compiler::Compiler;
-use crate::function::{FunctionType};
+use crate::function::FunctionType;
 use crate::scanner::Scanner;
 use crate::vm::{InterpretResult, Vm};
 use rustyline::config::Configurer;

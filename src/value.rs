@@ -1,7 +1,7 @@
 use crate::function::FunctionObject;
+use crate::native::NativeFn;
 use std::fmt::{Display, Formatter};
 use std::ops::{Div, Mul, Sub};
-use crate::native::NativeFn;
 
 #[derive(Debug, Clone)]
 pub enum Value {
