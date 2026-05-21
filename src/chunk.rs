@@ -32,7 +32,7 @@ pub enum OpCode {
     OpJump,
     OpLoop,
     OpDup,
-    OpYieldBlock,
+    OpYield,
     OpCall,
 }
 
@@ -67,7 +67,7 @@ impl TryFrom<u8> for OpCode {
             23 => Ok(OpCode::OpJump),
             24 => Ok(OpCode::OpLoop),
             25 => Ok(OpCode::OpDup),
-            26 => Ok(OpCode::OpYieldBlock),
+            26 => Ok(OpCode::OpYield),
             27 => Ok(OpCode::OpCall),
             _ => Err(format!("Unknown opcode: {}", byte)),
         }
@@ -169,7 +169,7 @@ impl Chunk {
             OpCode::OpSetLocal => self.byte_instruction(f, "OP_SET_LOCAL", offset),
             OpCode::OpCall => self.byte_instruction(f, "OP_CALL", offset),
             OpCode::OpPopN => self.byte_instruction(f, "OP_POP_N", offset),
-            OpCode::OpYieldBlock => self.byte_instruction(f, "OP_YIELD_BLOCK", offset),
+            OpCode::OpYield => self.byte_instruction(f, "OP_YIELD", offset),
             OpCode::OpJumpIfFalse => self.jump_instruction(f, "OP_JUMP_IF_FALSE", 1, offset),
             OpCode::OpJump => self.jump_instruction(f, "OP_JUMP", 1, offset),
             OpCode::OpLoop => self.jump_instruction(f, "OP_LOOP", -1, offset),

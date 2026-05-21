@@ -289,7 +289,7 @@ impl Compiler {
         }
         if pop_count > 0 {
             if with_value {
-                self.emit_bytes(OpCode::OpYieldBlock as u8, pop_count as u8);
+                self.emit_bytes(OpCode::OpYield as u8, pop_count as u8);
             } else {
                 self.emit_bytes(OpCode::OpPopN as u8, pop_count as u8);
             }

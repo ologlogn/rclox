@@ -196,14 +196,22 @@ impl Vm {
                     }
                 }
                 OpCode::OpReturn => {
-                    let result = self.stack.pop().unwrap_or(Value::Nil);
+                    let result = self.stack.pop().unwrap();
                     let frame = self.call_stack.pop().expect("call stack underflow");
                     if self.call_stack.is_empty() {
-                        return Ok(());
+                        return Ok(()); // end program
                     }
                     self.stack.truncate(frame.stack_base);
                     self.stack.push(result);
                 }
+
+                OpCode::OpYield => {
+                    let result = self.stack.pop().unwrap();
+                    let to_pop = self.read_byte();
+                    self.stack.truncate(self.stack.len() - to_pop as usize);
+                    self.stack.push(result);
+                }
+
                 // ── Control flow ─────────────────────────────────────────────
                 OpCode::OpJumpIfFalse => {
                     let offset = self.read_short();
@@ -239,12 +247,6 @@ impl Vm {
                 OpCode::OpDup => {
                     let v1 = self.peek_top();
                     self.stack.push(v1.clone());
-                }
-                OpCode::OpYieldBlock => {
-                    let result = self.stack.pop().unwrap();
-                    let to_pop = self.read_byte();
-                    self.stack.truncate(self.stack.len() - to_pop as usize);
-                    self.stack.push(result);
                 }
 
                 // ── Globals ──────────────────────────────────────────────────
