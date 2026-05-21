@@ -1,7 +1,7 @@
 use crate::chunk::{Chunk, OpCode};
 use crate::function::{CallFrame, FunctionObject};
 use crate::heap::Heap;
-use crate::native::{NativeFn, modulo};
+use crate::native::{NativeFunction, get_native_functions};
 use crate::value::{Object, ObjectType, Value};
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -32,11 +32,10 @@ impl Vm {
             globals: HashMap::new(),
             call_stack: Vec::new(),
         };
-        vm.define_native("clock", |_| {
-            use std::time::{SystemTime, UNIX_EPOCH};
-            Value::Number(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64())
-        });
-        vm.define_native("mod", modulo());
+        let native_functions = get_native_functions();
+        for f in native_functions {
+            vm.define_native(f.name.clone().as_str(), f);
+        }
         vm
     }
 
@@ -57,17 +56,32 @@ impl Vm {
         self.run()
     }
 
-    pub fn call(&mut self, function: &mut FunctionObject, arg_count: usize) -> Result<(), InterpretResult> {
-        if arg_count != function.arity {
-            self.runtime_error(format!("Expected {} but got {} arguments for function {}", arg_count, function.arity, function.name).as_str());
-            return Err(InterpretResult::InterpretRuntimeError);
+    fn check_arity(&mut self, arity: usize, arg_count: usize, name: String) -> Result<(), InterpretResult> {
+        if arg_count != arity {
+            self.runtime_error(format!("Expected {} but got {} arguments for function {}", arity, arg_count, name).as_str());
+            Err(InterpretResult::InterpretRuntimeError)
+        } else {
+            Ok(())
         }
+    }
+    fn call(&mut self, function: &mut FunctionObject, arg_count: usize) -> Result<(), InterpretResult> {
+        self.check_arity(function.arity, arg_count, function.name.clone())?;
         let frame = CallFrame {
             function,
             ip: 0,
             stack_base: self.stack.len() - arg_count - 1,
         };
         self.call_stack.push(frame);
+        Ok(())
+    }
+    fn call_native(&mut self, f: &mut NativeFunction, arg_count: usize) -> Result<(), InterpretResult> {
+        self.check_arity(f.arity, arg_count, f.name.clone())?;
+        let len = self.stack.len();
+        let args = self.stack[len - arg_count..len].to_vec();
+        let fun = f.fun;
+        let result = fun(&args);
+        self.stack.truncate(len - arg_count - 1);
+        self.stack.push(result);
         Ok(())
     }
 
@@ -180,13 +194,7 @@ impl Vm {
                         unsafe {
                             match &mut (*function).obj_type {
                                 ObjectType::Function(function_obj) => self.call(function_obj, arg_count)?,
-                                ObjectType::Native(f) => {
-                                    let len = self.stack.len();
-                                    let args = self.stack[len - arg_count..len].to_vec();
-                                    let result = f(&args);
-                                    self.stack.truncate(len - arg_count - 1);
-                                    self.stack.push(result);
-                                }
+                                ObjectType::Native(f) => self.call_native(f, arg_count)?,
                                 _ => {
                                     self.runtime_error("Invalid function type");
                                     return Err(InterpretResult::InterpretRuntimeError);
@@ -314,7 +322,7 @@ impl Vm {
 
     // ── Error handling ───────────────────────────────────────────────────────
 
-    fn runtime_error(&mut self, message: &str) {
+    pub fn runtime_error(&mut self, message: &str) {
         eprintln!("{}", message);
         for frame in self.call_stack.iter().rev() {
             let func = unsafe { &*frame.function };
@@ -346,7 +354,7 @@ impl Vm {
     pub fn allocate_function(&mut self, func: FunctionObject) -> *mut Object {
         self.allocate_object(ObjectType::Function(func))
     }
-    pub fn define_native(&mut self, name: &str, f: NativeFn) {
+    pub fn define_native(&mut self, name: &str, f: NativeFunction) {
         let obj = self.allocate_object(ObjectType::Native(f));
         self.globals.insert(name.to_string(), Value::Object(obj));
     }

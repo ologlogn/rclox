@@ -1,5 +1,5 @@
 use crate::function::FunctionObject;
-use crate::native::NativeFn;
+use crate::native::NativeFunction;
 use std::fmt::{Display, Formatter};
 use std::ops::{Div, Mul, Sub};
 
@@ -50,7 +50,7 @@ pub struct Object {
 pub enum ObjectType {
     String(String),
     Function(FunctionObject),
-    Native(NativeFn),
+    Native(NativeFunction),
 }
 
 impl Value {
