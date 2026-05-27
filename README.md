@@ -95,7 +95,8 @@ Object
   ├─ obj_type: ObjectType
   │    ├─ String(String)
   │    ├─ Function(FunctionObject)
-  │    └─ Native(NativeFunction)
+  │    ├─ Native(NativeFunction)
+  │    └─ Array(Vec<Value>)
   ├─ is_marked: bool            // for future mark-and-sweep GC
   └─ next: *mut Object          // intrusive linked list through the Heap
 ```
@@ -169,6 +170,11 @@ CallFrame {
 | `OpLoop` | `u16` offset | ip -= offset |
 | `OpCall` | `u8` arg_count | call top-of-stack function |
 | `OpReturn` | — | return top value to caller |
+| `OpArray` | `u8` n | pop n values, heap-allocate array, push |
+| `OpMakeArray` | — | pop length n, heap-allocate nil array of size n, push |
+| `OpGetIndex` | — | pop index + array, push element |
+| `OpSetIndex` | — | pop value + index + array, mutate, push value |
+| `OpLen` | — | pop array, push length as number |
 
 ---
 
@@ -180,7 +186,9 @@ CallFrame {
 
 **`break` and `continue`** — tracked per loop in `FunctionCompiler::jumps`. `break` emits a forward `OpJump` patch site collected at loop end. `continue` emits a backward `OpLoop` directly to the continue target (before the increment clause in `for`). Both call `discard_locals` to clean up any locals declared inside the loop body.
 
-**Native function extension point** — `NativeFunction { arity, name, is_variadic, fun: fn(&[Value]) -> Value }`. New natives register via `get_native_functions()`. Currently: `clock()` (Unix time as f64), `modulo(a, b)`.
+**Arrays** — `[1, "hello", true]` literal syntax and `array(n)` for nil-filled pre-allocation. Index get `arr[i]` and set `arr[i] = x` are proper l-values. `len(arr)` returns element count. Heterogeneous — elements are `Value`, any type mix is valid. Bounds and type checked at runtime. Arrays are heap objects, freed at VM teardown with everything else.
+
+**Native function extension point** — `NativeFunction { arity, name, is_variadic, fun: fn(&[Value]) -> Value }`. New natives register via `get_native_functions()`. Currently: `clock()` (Unix time as f64), `floor(n)`, `mod(a, b)`.
 
 ---
 
@@ -221,7 +229,7 @@ fun makeCounter() {
 **Switch expression**
 ```lox
 fun grade(score) {
-  return switch (score / 10) {
+  return switch (floor(score / 10)) {
     case 10 => { yield "A+"; }
     case 9  => { yield "A";  }
     case 8  => { yield "B";  }
@@ -238,7 +246,7 @@ print grade(72);  // F
 var i = 0;
 while (true) {
   i++;
-  if (i % 2 == 0) continue;
+  if (mod(i, 2) == 0) continue;
   if (i > 9) break;
   print i;  // 1 3 5 7 9
 }
@@ -258,10 +266,37 @@ var x = "global";
 print x;     // global
 ```
 
+**Arrays**
+```lox
+fun reverse(arr) {
+  var lo = 0;
+  var hi = len(arr) - 1;
+  while (lo < hi) {
+    var tmp = arr[lo];
+    arr[lo] = arr[hi];
+    arr[hi] = tmp;
+    lo++; hi--;
+  }
+}
+
+fun indexOf(arr, val) {
+  for (var i = 0; i < len(arr); i++) {
+    if (arr[i] == val) return i;
+  }
+  return -1;
+}
+
+var a = [5, 3, 1, 4, 2];
+reverse(a);
+print a;              // [2, 4, 1, 3, 5]
+print indexOf(a, 3);  // 2
+```
+
 **Native functions**
 ```lox
 print clock();           // Unix epoch seconds as f64
-print modulo(17, 5);     // 2
+print mod(17, 5);     // 2
+print floor(9.7);     // 9
 ```
 
 ---

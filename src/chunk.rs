@@ -34,6 +34,11 @@ pub enum OpCode {
     OpDup,
     OpYield,
     OpCall,
+    OpArray,
+    OpSetIndex,
+    OpGetIndex,
+    OpMakeArray,
+    OpLen,
 }
 
 impl TryFrom<u8> for OpCode {
@@ -69,6 +74,11 @@ impl TryFrom<u8> for OpCode {
             25 => Ok(OpCode::OpDup),
             26 => Ok(OpCode::OpYield),
             27 => Ok(OpCode::OpCall),
+            28 => Ok(OpCode::OpArray),
+            29 => Ok(OpCode::OpSetIndex),
+            30 => Ok(OpCode::OpGetIndex),
+            31 => Ok(OpCode::OpMakeArray),
+            32 => Ok(OpCode::OpLen),
             _ => Err(format!("Unknown opcode: {}", byte)),
         }
     }
@@ -170,6 +180,11 @@ impl Chunk {
             OpCode::OpCall => self.byte_instruction(f, "OP_CALL", offset),
             OpCode::OpPopN => self.byte_instruction(f, "OP_POP_N", offset),
             OpCode::OpYield => self.byte_instruction(f, "OP_YIELD", offset),
+            OpCode::OpArray => self.byte_instruction(f, "OP_ARRAY", offset),
+            OpCode::OpSetIndex => self.simple_instruction(f, "OP_SET_INDEX", offset),
+            OpCode::OpGetIndex => self.simple_instruction(f, "OP_GET_INDEX", offset),
+            OpCode::OpMakeArray => self.simple_instruction(f, "OP_MAKE_ARRAY", offset),
+            OpCode::OpLen => self.simple_instruction(f, "OP_LEN", offset),
             OpCode::OpJumpIfFalse => self.jump_instruction(f, "OP_JUMP_IF_FALSE", 1, offset),
             OpCode::OpJump => self.jump_instruction(f, "OP_JUMP", 1, offset),
             OpCode::OpLoop => self.jump_instruction(f, "OP_LOOP", -1, offset),

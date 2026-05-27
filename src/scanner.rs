@@ -99,12 +99,23 @@ impl Scanner {
             self.advance();
         }
         let token_type = match self.char_at_nth(self.start, 0) {
-            'a' => self.check_keyword(1, "nd", TokenType::And),
+            'a' => {
+                if self.current - self.start > 1 {
+                    match self.char_at_nth(self.start, 1) {
+                        'n' => self.check_keyword(2, "d", TokenType::And),
+                        'r' => self.check_keyword(2, "ray", TokenType::Array),
+                        _ => TokenType::Identifier,
+                    }
+                } else {
+                    TokenType::Identifier
+                }
+            }
             'e' => self.check_keyword(1, "lse", TokenType::Else),
             'i' => self.check_keyword(1, "f", TokenType::If),
             'n' => self.check_keyword(1, "il", TokenType::Nil),
             'o' => self.check_keyword(1, "r", TokenType::Or),
             'p' => self.check_keyword(1, "rint", TokenType::Print),
+            'l' => self.check_keyword(1, "en", TokenType::Len),
             'r' => self.check_keyword(1, "eturn", TokenType::Return),
             's' => {
                 if self.current - self.start > 1 {
@@ -190,6 +201,8 @@ impl Scanner {
                 ')' => self.make_token(TokenType::RightParen),
                 '{' => self.make_token(TokenType::LeftBrace),
                 '}' => self.make_token(TokenType::RightBrace),
+                '[' => self.make_token(TokenType::LeftBracket),
+                ']' => self.make_token(TokenType::RightBracket),
                 ',' => self.make_token(TokenType::Comma),
                 '.' => self.make_token(TokenType::Dot),
                 '-' => {

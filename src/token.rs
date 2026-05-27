@@ -7,6 +7,8 @@ pub enum TokenType {
     RightParen,
     LeftBrace,
     RightBrace,
+    LeftBracket,
+    RightBracket,
     Comma,
     Dot,
     Minus,
@@ -56,6 +58,8 @@ pub enum TokenType {
     Case,
     Default,
     Yield,
+    Array,
+    Len,
     Error(&'static str), // a constant message at the compile time
     EOF,
 }

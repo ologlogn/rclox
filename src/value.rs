@@ -24,7 +24,17 @@ impl Display for Value {
                 match &obj.obj_type {
                     ObjectType::String(s) => write!(f, "{}", s),
                     ObjectType::Function(fun) => write!(f, "<fun {}>", fun.name),
-                    ObjectType::Native(_) => write!(f, "<native fn>"),
+                    ObjectType::Native(fun) => write!(f, "<native fun {}>", fun.name),
+                    ObjectType::Array(values) => {
+                        write!(f, "[")?;
+                        for (i, v) in values.iter().enumerate() {
+                            if i > 0 {
+                                write!(f, ", ")?;
+                            }
+                            write!(f, "{}", v)?;
+                        }
+                        write!(f, "]")
+                    }
                 }
             },
         }
@@ -51,6 +61,7 @@ pub enum ObjectType {
     String(String),
     Function(FunctionObject),
     Native(NativeFunction),
+    Array(Vec<Value>),
 }
 
 impl Value {

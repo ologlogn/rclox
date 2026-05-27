@@ -1,0 +1,192 @@
+// ── 0. len ───────────────────────────────────────────────────────────────────
+print len([1, 2, 3]);        // 3
+print len(array(10));        // 10
+var tmp = [1, 2, 3, 4, 5];
+print len(tmp);              // 5
+
+// ── 0b. array(n) edge cases ───────────────────────────────────────────────────
+var empty = array(0);
+print len(empty);        // 0
+
+var single = array(1);
+single[0] = 42;
+print single[0];         // 42
+print len(single);       // 1
+
+var dyn_size = 4;
+var d = array(dyn_size);
+for (var i = 0; i < len(d); i++) {
+  d[i] = i * 2;
+}
+print d[0];   // 0
+print d[3];   // 6
+
+// ── 1. Literal construction ───────────────────────────────────────────────────
+var a = [10, 20, 30, 40, 50];
+print a[0];   // 10
+print a[4];   // 50
+
+// ── 2. Mutation ───────────────────────────────────────────────────────────────
+a[2] = 99;
+print a[2];   // 99
+
+// ── 3. Heterogeneous types ────────────────────────────────────────────────────
+var mixed = [1, "hello", true, nil, 3.14];
+print mixed[0];   // 1
+print mixed[1];   // hello
+print mixed[2];   // true
+print mixed[3];   // nil
+print mixed[4];   // 3.14
+
+// ── 4. array(n) pre-allocation ────────────────────────────────────────────────
+var pre = array(5);
+print pre[0];   // nil
+for (var i = 0; i < 5; i++) {
+  pre[i] = i * i;
+}
+print pre[0];   // 0
+print pre[1];   // 1
+print pre[2];   // 4
+print pre[3];   // 9
+print pre[4];   // 16
+
+// ── 5. Dynamic size ───────────────────────────────────────────────────────────
+var n = 8;
+var dyn = array(n);
+for (var i = 0; i < n; i++) {
+  dyn[i] = i + 1;
+}
+print dyn[0];   // 1
+print dyn[7];   // 8
+
+// ── 6. Nested arrays ─────────────────────────────────────────────────────────
+var matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+var row0 = matrix[0];
+var row1 = matrix[1];
+var row2 = matrix[2];
+print row0[0];   // 1
+print row1[1];   // 5
+print row2[2];   // 9
+row1[1] = 99;
+print row1[1];   // 99
+
+// ── 7. Array passed to function ───────────────────────────────────────────────
+fun sum(arr) {
+  var total = 0;
+  for (var i = 0; i < len(arr); i++) {
+    total = total + arr[i];
+  }
+  return total;
+}
+var nums = [1, 2, 3, 4, 5];
+print sum(nums);   // 15
+
+// ── 8. Array returned from function ──────────────────────────────────────────
+fun range(n) {
+  var r = array(n);
+  for (var i = 0; i < len(r); i++) {
+    r[i] = i;
+  }
+  return r;
+}
+var r = range(6);
+print r[0];   // 0
+print r[5];   // 5
+
+// ── 9. Reverse in place ───────────────────────────────────────────────────────
+fun reverse(arr) {
+  var lo = 0;
+  var hi = len(arr) - 1;
+  while (lo < hi) {
+    var tmp = arr[lo];
+    arr[lo] = arr[hi];
+    arr[hi] = tmp;
+    lo++;
+    hi--;
+  }
+}
+var rev = [1, 2, 3, 4, 5];
+reverse(rev);
+print rev;   // [5, 4, 3, 2, 1]
+
+// ── 10. Linear search ────────────────────────────────────────────────────────
+fun indexOf(arr, val) {
+  for (var i = 0; i < len(arr); i++) {
+    if (arr[i] == val) return i;
+  }
+  return -1;
+}
+var haystack = [3, 7, 1, 9, 4];
+print indexOf(haystack, 9);    // 3
+print indexOf(haystack, 42);   // -1
+
+// ── 11. Copy ─────────────────────────────────────────────────────────────────
+fun copy(src) {
+  var dst = array(len(src));
+  for (var i = 0; i < len(src); i++) {
+    dst[i] = src[i];
+  }
+  return dst;
+}
+var orig = [10, 20, 30];
+var dup = copy(orig);
+dup[0] = 999;
+print orig[0];   // 10  (unaffected)
+print dup[0];    // 999
+
+// ── 12. Merge sort ────────────────────────────────────────────────────────────
+fun merge(left, lLen, right, rLen) {
+  var result = array(lLen + rLen);
+  var i = 0; var j = 0; var k = 0;
+  while (i < lLen and j < rLen) {
+    if (left[i] <= right[j]) { result[k] = left[i];  i++; }
+    else                      { result[k] = right[j]; j++; }
+    k++;
+  }
+  while (i < lLen) { result[k] = left[i];  i++; k++; }
+  while (j < rLen)  { result[k] = right[j]; j++; k++; }
+  return result;
+}
+fun mergeSort(arr, n) {
+  if (n <= 1) return arr;
+  var mid = floor(n / 2);
+  var left = array(mid);
+  var right = array(n - mid);
+  for (var i = 0; i < mid; i++)      { left[i]  = arr[i]; }
+  for (var i = 0; i < n - mid; i++)  { right[i] = arr[mid + i]; }
+  left  = mergeSort(left,  mid);
+  right = mergeSort(right, n - mid);
+  return merge(left, mid, right, n - mid);
+}
+var unsorted = [5, 3, 8, 1, 9, 2, 7, 4, 6];
+var sorted = mergeSort(unsorted, len(unsorted));
+for (var i = 0; i < len(sorted); i++) {
+  print sorted[i];   // 1 2 3 4 5 6 7 8 9
+}
+
+// ── 13. Array in loop accumulation ───────────────────────────────────────────
+var fibs = array(10);
+fibs[0] = 0;
+fibs[1] = 1;
+for (var i = 2; i < len(fibs); i++) {
+  fibs[i] = fibs[i - 1] + fibs[i - 2];
+}
+print fibs[9];   // 34
+
+// ── 14. 2D matrix multiply ───────────────────────────────────────────────────
+// 2x2 matrices stored as flat arrays [a00, a01, a10, a11]
+fun matmul(a, b) {
+  var c = array(4);
+  c[0] = a[0]*b[0] + a[1]*b[2];
+  c[1] = a[0]*b[1] + a[1]*b[3];
+  c[2] = a[2]*b[0] + a[3]*b[2];
+  c[3] = a[2]*b[1] + a[3]*b[3];
+  return c;
+}
+var m1 = [1, 2, 3, 4];
+var m2 = [5, 6, 7, 8];
+var m3 = matmul(m1, m2);
+print m3[0];   // 19
+print m3[1];   // 22
+print m3[2];   // 43
+print m3[3];   // 50
