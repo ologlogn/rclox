@@ -192,6 +192,80 @@ CallFrame {
 - [ ] **Methods and `this`** — `ObjBoundMethod`, `OpInvoke` fast path, implicit `this` as slot 0 (ch. 28)
 - [ ] **Inheritance** — `<` syntax, `ObjClass::superclass`, `OpGetSuper`/`OpInvokeSuper`, `super` keyword (ch. 29)
 
+## Examples
+
+**Fibonacci (recursion + timing)**
+```lox
+fun fib(n) {
+  if (n < 2) return n;
+  return fib(n - 1) + fib(n - 2);
+}
+
+var start = clock();
+print fib(30);
+print clock() - start;
+```
+
+**Closures / higher-order functions** *(once closures are implemented)*
+```lox
+fun makeCounter() {
+  var count = 0;
+  fun increment() {
+    count = count + 1;
+    return count;
+  }
+  return increment;
+}
+```
+
+**Switch expression**
+```lox
+fun grade(score) {
+  return switch (score / 10) {
+    case 10 => { yield "A+"; }
+    case 9  => { yield "A";  }
+    case 8  => { yield "B";  }
+    default => { yield "F";  }
+  };
+}
+
+print grade(95);  // A
+print grade(72);  // F
+```
+
+**Loops with break / continue**
+```lox
+var i = 0;
+while (true) {
+  i++;
+  if (i % 2 == 0) continue;
+  if (i > 9) break;
+  print i;  // 1 3 5 7 9
+}
+
+for (var j = 0; j < 5; j++) {
+  print j;
+}
+```
+
+**Scoping and shadowing**
+```lox
+var x = "global";
+{
+  var x = "inner";
+  print x;   // inner
+}
+print x;     // global
+```
+
+**Native functions**
+```lox
+print clock();           // Unix epoch seconds as f64
+print modulo(17, 5);     // 2
+```
+
+---
+
 ## Building & running
 
 ```
