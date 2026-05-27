@@ -184,6 +184,16 @@ impl Compiler {
             self.postfix_(get_op, set_op, OpCode::OpAdd, arg);
         } else if self.parser.match_token_type(TokenType::MinusMinus) {
             self.postfix_(get_op, set_op, OpCode::OpSubtract, arg);
+        } else if self.parser.match_token_type(TokenType::LeftBracket) {
+            self.emit_bytes(get_op as u8, arg); // get the array variable on stack.
+            self.expression(); //index
+            self.consume(TokenType::RightBracket, "Expect ']'");
+            if self.parser.can_assign && self.parser.match_token_type(TokenType::Equal) {
+                self.expression(); // value
+                self.emit_byte(OpCode::OpSetIndex as u8);
+            } else {
+                self.emit_byte(OpCode::OpGetIndex as u8);
+            }
         } else if self.parser.can_assign && self.parser.match_token_type(TokenType::Equal) {
             self.expression();
             self.emit_bytes(set_op as u8, arg);
@@ -300,6 +310,34 @@ impl Compiler {
         }
     }
 
+    // ── Array ────────────────────────────────────────────────────────
+    pub(super) fn array(&mut self) {
+        let mut count = 0;
+        while !self.parser.check(TokenType::RightBracket) {
+            self.expression(); // Value
+            count += 1;
+            if !self.parser.match_token_type(TokenType::Comma) {
+                break;
+            }
+        }
+        self.consume(TokenType::RightBracket, "Expected ']'");
+        self.emit_bytes(OpCode::OpArray as u8, count as u8);
+    }
+    pub(super) fn make_array(&mut self) {
+        self.consume(TokenType::LeftParen, "Expected '('");
+        self.expression(); // length
+        self.consume(TokenType::RightParen, "Expected ')'");
+        self.emit_byte(OpCode::OpMakeArray as u8);
+    }
+
+    pub(super) fn len_(&mut self) {
+        self.consume(TokenType::LeftParen, "Expected '('");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expected ')'");
+        self.emit_byte(OpCode::OpLen as u8);
+    }
+
+    // ── Functions ────────────────────────────────────────────────────────
     pub(super) fn call(&mut self) {
         let mut arguments = 0;
         if !self.parser.check(TokenType::RightParen) {

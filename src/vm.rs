@@ -13,7 +13,6 @@ pub enum InterpretResult {
 }
 
 pub struct Vm {
-    //    ip: usize,
     stack: Vec<Value>,
     heap: Heap,
     interned_strings: HashMap<String, *mut Object>,
@@ -115,6 +114,47 @@ impl Vm {
 
     fn peek_top(&self) -> Value {
         self.stack[self.stack.len() - 1].clone()
+    }
+
+    // ── Array helpers ────────────────────────────────────────────────────────
+    fn validate_index(&mut self, n: f64, len: usize) -> Result<usize, InterpretResult> {
+        if n < 0.0 || n.fract() != 0.0 {
+            self.runtime_error("Index must be a non-negative integer");
+            return Err(InterpretResult::InterpretRuntimeError);
+        }
+        let i = n as usize;
+        if i >= len {
+            self.runtime_error(&format!("Index {} out of bounds (len {})", i, len));
+            return Err(InterpretResult::InterpretRuntimeError);
+        }
+        Ok(i)
+    }
+
+    fn pop_array(&mut self) -> Result<*mut Object, InterpretResult> {
+        let value = self.stack.pop().unwrap();
+        let Value::Object(obj_ptr) = value else {
+            self.runtime_error("Not an array");
+            return Err(InterpretResult::InterpretRuntimeError);
+        };
+        let obj = unsafe { &*obj_ptr };
+        let ObjectType::Array(_) = &obj.obj_type else {
+            self.runtime_error("Not an array");
+            return Err(InterpretResult::InterpretRuntimeError);
+        };
+        Ok(obj_ptr)
+    }
+
+    fn pop_array_and_index(&mut self) -> Result<(*mut Object, usize), InterpretResult> {
+        let index = self.stack.pop().unwrap();
+        let Value::Number(n) = index else {
+            self.runtime_error("Index must be a number");
+            return Err(InterpretResult::InterpretRuntimeError);
+        };
+        let obj_ptr = self.pop_array()?;
+        let obj = unsafe { &*obj_ptr };
+        let ObjectType::Array(values) = &obj.obj_type else { unreachable!() };
+        let i = self.validate_index(n, values.len())?;
+        Ok((obj_ptr, i))
     }
 
     // ── Arithmetic helpers ────────────────────────────────────────────────────
@@ -235,6 +275,45 @@ impl Vm {
                     let offset = self.read_short();
                     self.current_frame().ip -= offset as usize;
                 }
+                // ── Array ─────────────────────────────────────────────
+                OpCode::OpArray => {
+                    let count = self.read_byte() as usize;
+                    let len = self.stack.len();
+                    let values: Vec<Value> = self.stack.drain(len - count..).collect();
+                    let array = self.allocate_object(ObjectType::Array(values));
+                    self.stack.push(Value::Object(array));
+                }
+                OpCode::OpMakeArray => {
+                    let len = self.stack.pop().unwrap();
+                    let Value::Number(n) = len else {
+                        self.runtime_error("Length be a number");
+                        return Err(InterpretResult::InterpretRuntimeError);
+                    };
+                    let values = vec![Value::Nil; n as usize];
+                    let array = self.allocate_object(ObjectType::Array(values));
+                    self.stack.push(Value::Object(array));
+                }
+                OpCode::OpLen => {
+                    let obj_ptr = self.pop_array()?;
+                    let obj = unsafe { &*obj_ptr };
+                    let ObjectType::Array(values) = &obj.obj_type else { unreachable!() };
+                    self.stack.push(Value::Number(values.len() as f64));
+                }
+                OpCode::OpGetIndex => {
+                    let (obj_ptr, i) = self.pop_array_and_index()?;
+                    let obj = unsafe { &*obj_ptr };
+                    let ObjectType::Array(values) = &obj.obj_type else { unreachable!() };
+                    self.stack.push(values[i].clone());
+                }
+
+                OpCode::OpSetIndex => {
+                    let value = self.stack.pop().unwrap();
+                    let (obj_ptr, i) = self.pop_array_and_index()?;
+                    let obj = unsafe { &mut *obj_ptr };
+                    let ObjectType::Array(values) = &mut obj.obj_type else { unreachable!() };
+                    values[i] = value.clone();
+                    self.stack.push(value);
+                }
                 // ── Constants ────────────────────────────────────────────────
                 OpCode::OpConstant => {
                     let value = self.read_constant();
@@ -298,7 +377,10 @@ impl Vm {
                 // ── Unary ops ────────────────────────────────────────────────
                 OpCode::OpNegate => match self.stack.last_mut() {
                     Some(Value::Number(n)) => *n = -*n,
-                    _ => return Err(InterpretResult::InterpretRuntimeError),
+                    _ => {
+                        self.runtime_error("Operand must be a number");
+                        return Err(InterpretResult::InterpretRuntimeError);
+                    }
                 },
                 OpCode::OpNot => {
                     let value = self.stack.pop().unwrap();
