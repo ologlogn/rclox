@@ -1,4 +1,5 @@
 pub(crate) mod clock;
+pub(crate) mod floor;
 pub(crate) mod modulo;
 
 use crate::value::Value;
@@ -13,5 +14,5 @@ pub struct NativeFunction {
 }
 
 pub fn get_native_functions() -> Vec<NativeFunction> {
-    vec![clock::new(), modulo::new()]
+    vec![clock::new(), floor::new(), modulo::new()]
 }

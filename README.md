@@ -221,7 +221,7 @@ fun makeCounter() {
 **Switch expression**
 ```lox
 fun grade(score) {
-  return switch (score / 10) {
+  return switch (floor(score / 10)) {
     case 10 => { yield "A+"; }
     case 9  => { yield "A";  }
     case 8  => { yield "B";  }
@@ -238,7 +238,7 @@ print grade(72);  // F
 var i = 0;
 while (true) {
   i++;
-  if (i % 2 == 0) continue;
+  if (mod(i, 2) == 0) continue;
   if (i > 9) break;
   print i;  // 1 3 5 7 9
 }
@@ -260,8 +260,9 @@ print x;     // global
 
 **Native functions**
 ```lox
-print clock();           // Unix epoch seconds as f64
-print modulo(17, 5);     // 2
+print clock();        // Unix epoch seconds as f64
+print mod(17, 5);     // 2
+print floor(9.7);     // 9
 ```
 
 ---
