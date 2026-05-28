@@ -1,0 +1,49 @@
+// Create array with 10000 slots
+var N = 1000000;
+var arr = array(N);
+var sorted = array(N);
+var res = array(N);
+
+var start = clock();
+
+for (var i = 0; i < N; ++i) {
+    arr[i] = i + 1;
+    sorted[i] = i + 1;
+}
+
+print "Array Init";
+print clock() - start;
+start = clock();
+// Fisher-Yates shuffle
+for (var i = N-1; i > 0; --i) {
+    var j = random(0, i);
+    var temp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = temp;
+}
+print "Random number generation";
+print clock() - start;
+start = clock();
+
+for (var i = N-1; i > 0; --i) {
+   if (arr[i] < 50000) {
+       res[i] = true;
+   } else {
+       res[i] = false;
+   }
+}
+
+print "Unsorted";
+
+print clock() - start;
+start = clock();
+
+for (var i = N-1; i > 0; --i) {
+   if (sorted[i] < 50000) {
+       res[i] = true;
+   } else {
+       res[i] = false;
+   }
+}
+print "Sorted";
+print clock() - start;

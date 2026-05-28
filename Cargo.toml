@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 rustyline = "14"
+rand = "0.10.1"
