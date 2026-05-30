@@ -26,7 +26,7 @@ impl Vm {
 
     pub fn new() -> Vm {
         let mut vm = Vm {
-            stack: Vec::new(),
+            stack: Vec::with_capacity(256),
             heap: Heap::new(),
             interned_strings: HashMap::new(),
             globals: HashMap::new(),
@@ -249,7 +249,7 @@ impl Vm {
                         let index = self.read_byte() as usize;
 
                         if is_local {
-                            let slot = self.call_stack.len()  + index;
+                            let slot = self.current_frame().stack_base  + index;
                             let slot_ptr = &mut self.stack[slot] as *mut Value;
                             let upvalue_obj = self.capture_upvalue(slot_ptr);
                             closure.upvalues[i] = upvalue_obj;
