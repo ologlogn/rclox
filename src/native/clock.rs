@@ -4,7 +4,7 @@ use crate::value::Value;
 pub fn clock() -> NativeFn {
     |_| {
         use std::time::{SystemTime, UNIX_EPOCH};
-        Value::Number(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64())
+        Ok(Value::Number(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64()))
     }
 }
 

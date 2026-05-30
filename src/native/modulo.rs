@@ -4,12 +4,12 @@ use crate::value::Value;
 pub fn modulo() -> NativeFn {
     |args| {
         let Value::Number(a) = args[0] else {
-            panic!("mod: expected a number, got {}", args[0])
+            return Err(format!("mod: expected a number, got {}", args[0]));
         };
         let Value::Number(b) = args[1] else {
-            panic!("mod: expected a number, got {}", args[1])
+            return Err(format!("mod: expected a number, got {}", args[1]));
         };
-        Value::Number(a % b)
+        Ok(Value::Number(a % b))
     }
 }
 

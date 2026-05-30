@@ -82,10 +82,17 @@ impl Vm {
         let len = self.stack.len();
         let args = self.stack[len - arg_count..len].to_vec();
         let fun = f.fun;
-        let result = fun(&args);
-        self.stack.truncate(len - arg_count - 1);
-        self.stack.push(result);
-        Ok(())
+        match fun(&args) {
+            Ok(result) => {
+                self.stack.truncate(len - arg_count - 1);
+                self.stack.push(result);
+                Ok(())
+            }
+            Err(msg) => {
+                self.runtime_error(&msg);
+                Err(InterpretResult::InterpretRuntimeError)
+            }
+        }
     }
 
     // ── Bytecode reading ─────────────────────────────────────────────────────
@@ -283,9 +290,13 @@ impl Vm {
                 OpCode::OpMakeArray => {
                     let len = self.stack.pop().unwrap();
                     let Value::Number(n) = len else {
-                        self.runtime_error("Length be a number");
+                        self.runtime_error("Length must be a number");
                         return Err(InterpretResult::InterpretRuntimeError);
                     };
+                    if n < 0.0 || n.fract() != 0.0 {
+                        self.runtime_error("Length must be a non-negative integer");
+                        return Err(InterpretResult::InterpretRuntimeError);
+                    }
                     let values = vec![Value::Nil; n as usize];
                     let array = self.allocate_object(ObjectType::Array(values));
                     self.stack.push(Value::Object(array));
