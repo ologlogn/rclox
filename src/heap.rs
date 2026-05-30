@@ -1,5 +1,3 @@
-use crate::closure::ClosureObject;
-use crate::function::FunctionObject;
 use crate::value::{Object, ObjectType};
 
 pub struct Heap {

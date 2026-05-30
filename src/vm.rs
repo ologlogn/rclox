@@ -43,26 +43,17 @@ impl Vm {
         self.call_stack.last_mut().unwrap()
     }
     fn current_chunk(&mut self) -> &mut Chunk {
-        let func = unsafe { &mut *(&*self.current_frame().closure).function };
-        &mut func.chunk
+        &mut unsafe { &mut *(&*self.current_frame().closure).function }.chunk
     }
     pub fn interpret(&mut self, function: *mut Object) -> Result<(), InterpretResult> {
         self.stack.push(Value::Object(function));
         unsafe {
-            match &mut (*function).obj_type {
-                ObjectType::Function(func) => {
-                    let closure = ClosureObject::new(func);
-                    let closure_obj = self.allocate_object(ObjectType::Closure(closure));
-                    self.stack.pop(); //remove func TODO: Because of GC
-                    self.stack.push(Value::Object(closure_obj));
-                    let closure_mut = match &mut (*closure_obj).obj_type {
-                        ObjectType::Closure(c) => c,
-                        _ => unreachable!(),
-                    };
-                    self.call(closure_mut, 0)?;
-                }
-                _ => unreachable!(),
-            }
+            let func = (*function).as_function_mut();
+            let closure = ClosureObject::new(func);
+            let closure_obj = self.allocate_object(ObjectType::Closure(closure));
+            self.stack.pop();
+            self.stack.push(Value::Object(closure_obj));
+            self.call((*closure_obj).as_closure_mut(), 0)?;
         }
         self.run()
     }
@@ -143,31 +134,25 @@ impl Vm {
         Ok(i)
     }
 
-    fn pop_array(&mut self) -> Result<*mut Object, InterpretResult> {
+    fn pop_array(&mut self) -> Result<Value, InterpretResult> {
         let value = self.stack.pop().unwrap();
-        let Value::Object(obj_ptr) = value else {
+        if !value.is_array() {
             self.runtime_error("Not an array");
             return Err(InterpretResult::InterpretRuntimeError);
-        };
-        let obj = unsafe { &*obj_ptr };
-        let ObjectType::Array(_) = &obj.obj_type else {
-            self.runtime_error("Not an array");
-            return Err(InterpretResult::InterpretRuntimeError);
-        };
-        Ok(obj_ptr)
+        }
+        Ok(value)
     }
 
-    fn pop_array_and_index(&mut self) -> Result<(*mut Object, usize), InterpretResult> {
+    fn pop_array_and_index(&mut self) -> Result<(Value, usize), InterpretResult> {
         let index = self.stack.pop().unwrap();
         let Value::Number(n) = index else {
             self.runtime_error("Index must be a number");
             return Err(InterpretResult::InterpretRuntimeError);
         };
-        let obj_ptr = self.pop_array()?;
-        let obj = unsafe { &*obj_ptr };
-        let ObjectType::Array(values) = &obj.obj_type else { unreachable!() };
-        let i = self.validate_index(n, values.len())?;
-        Ok((obj_ptr, i))
+        let arr = self.pop_array()?;
+        let len = unsafe { arr.as_array() }.len();
+        let i = self.validate_index(n, len)?;
+        Ok((arr, i))
     }
 
     // ── Arithmetic helpers ────────────────────────────────────────────────────
@@ -203,29 +188,19 @@ impl Vm {
             self.runtime_error("Stack underflow");
             return Err(InterpretResult::InterpretRuntimeError);
         }
-        let a = &self.stack[len - 2];
-        let b = &self.stack[len - 1];
-        let result = match (a, b) {
-            (Value::Number(a), Value::Number(b)) => Value::Number(a + b),
-            (Value::Object(a_ptr), Value::Object(b_ptr)) => unsafe {
-                let obj_a = &**a_ptr;
-                let obj_b = &**b_ptr;
-                match (&obj_a.obj_type, &obj_b.obj_type) {
-                    (ObjectType::String(str_a), ObjectType::String(str_b)) => {
-                        let concatenated = format!("{}{}", str_a, str_b);
-                        let ptr = self.allocate_string(concatenated.as_str());
-                        Value::Object(ptr)
-                    }
-                    _ => {
-                        self.runtime_error("Operands must be two numbers or two strings");
-                        return Err(InterpretResult::InterpretRuntimeError);
-                    }
-                }
-            },
-            _ => {
-                self.runtime_error("Operands must be two numbers or two strings");
-                return Err(InterpretResult::InterpretRuntimeError);
-            }
+        let a = self.stack[len - 2].clone();
+        let b = self.stack[len - 1].clone();
+        let result = if a.is_number() && b.is_number() {
+            Value::Number(a.as_number() + b.as_number())
+        } else if a.is_string() && b.is_string() {
+            let str_a = unsafe { a.as_string() }.to_string();
+            let str_b = unsafe { b.as_string() }.to_string();
+            let concatenated = format!("{}{}", str_a, str_b);
+            let ptr = self.allocate_string(&concatenated);
+            Value::Object(ptr)
+        } else {
+            self.runtime_error("Operands must be two numbers or two strings");
+            return Err(InterpretResult::InterpretRuntimeError);
         };
         self.stack.pop();
         self.stack.pop();
@@ -242,31 +217,23 @@ impl Vm {
                 // ── Functions ─────────────────────────────────────────────
                 OpCode::OpCall => {
                     let arg_count = self.read_byte() as usize;
-                    let fun_value = self.stack[self.stack.len() - arg_count - 1].clone();
-                    if let Value::Object(callable) = fun_value {
-                        unsafe {
-                            match &mut (*callable).obj_type {
-                                ObjectType::Closure(closure) => self.call(closure, arg_count)?,
-                                ObjectType::Native(f) => self.call_native(f, arg_count)?,
-                                _ => {
-                                    self.runtime_error("Invalid function type");
-                                    return Err(InterpretResult::InterpretRuntimeError);
-                                }
-                            }
-                        }
+                    let val = self.stack[self.stack.len() - arg_count - 1].clone();
+                    if val.is_closure() {
+                        self.call(unsafe { val.as_closure_mut() }, arg_count)?;
+                    } else if val.is_native() {
+                        self.call_native(unsafe { val.as_native_mut() }, arg_count)?;
+                    } else {
+                        self.runtime_error("Invalid function type");
+                        return Err(InterpretResult::InterpretRuntimeError);
                     }
                 }
                 OpCode::OpClosure => {
                     let fun_val = self.read_constant();
-                    let Value::Object(obj_ptr) = fun_val else {
-                        self.runtime_error("Not an Object");
-                        return Err(InterpretResult::InterpretRuntimeError);
-                    };
-                    let obj = unsafe { &mut *obj_ptr };
-                    let ObjectType::Function(function) = &mut obj.obj_type else {
+                    if !fun_val.is_function() {
                         self.runtime_error("Not a function");
                         return Err(InterpretResult::InterpretRuntimeError);
-                    };
+                    }
+                    let function = unsafe { fun_val.as_function_mut() };
                     let closure = ClosureObject::new(function);
                     let closure_obj = self.allocate_object(ObjectType::Closure(closure));
                     self.stack.push(Value::Object(closure_obj));
@@ -324,24 +291,21 @@ impl Vm {
                     self.stack.push(Value::Object(array));
                 }
                 OpCode::OpLen => {
-                    let obj_ptr = self.pop_array()?;
-                    let obj = unsafe { &*obj_ptr };
-                    let ObjectType::Array(values) = &obj.obj_type else { unreachable!() };
-                    self.stack.push(Value::Number(values.len() as f64));
+                    let arr = self.pop_array()?;
+                    let len = unsafe { arr.as_array() }.len();
+                    self.stack.push(Value::Number(len as f64));
                 }
                 OpCode::OpGetIndex => {
-                    let (obj_ptr, i) = self.pop_array_and_index()?;
-                    let obj = unsafe { &*obj_ptr };
-                    let ObjectType::Array(values) = &obj.obj_type else { unreachable!() };
-                    self.stack.push(values[i].clone());
+                    let (arr, i) = self.pop_array_and_index()?;
+                    let val = unsafe { arr.as_array() }[i].clone();
+                    self.stack.push(val);
                 }
 
                 OpCode::OpSetIndex => {
                     let value = self.stack.pop().unwrap();
-                    let (obj_ptr, i) = self.pop_array_and_index()?;
-                    let obj = unsafe { &mut *obj_ptr };
-                    let ObjectType::Array(values) = &mut obj.obj_type else { unreachable!() };
-                    values[i] = value.clone();
+                    let (arr, i) = self.pop_array_and_index()?;
+                    let arr_mut = unsafe { arr.as_array_mut() };
+                    arr_mut[i] = value.clone();
                     self.stack.push(value);
                 }
                 // ── Constants ────────────────────────────────────────────────
