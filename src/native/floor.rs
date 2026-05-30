@@ -4,9 +4,9 @@ use crate::value::Value;
 pub fn floor() -> NativeFn {
     |args| {
         let Value::Number(n) = args[0] else {
-            panic!("floor: expected a number, got {}", args[0])
+            return Err(format!("floor: expected a number, got {}", args[0]));
         };
-        Value::Number(n.floor())
+        Ok(Value::Number(n.floor()))
     }
 }
 

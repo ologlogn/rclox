@@ -1,5 +1,4 @@
-use crate::function::FunctionObject;
-use crate::value::{Object, ObjectType, Value};
+use crate::value::Value;
 use std::collections::HashMap;
 use std::fmt;
 // ── OpCode ───────────────────────────────────────────────────────────────────
@@ -215,19 +214,8 @@ impl Chunk {
     fn closure_instruction(&self, f: &mut fmt::Formatter<'_>, name: &str, offset: usize) -> Result<usize, fmt::Error> {
         let constant_index = self.code[offset + 1] as usize;
         let value = self.constants[constant_index].clone();
-
         writeln!(f, "{:<16} {:4} {:?}: {}", name, constant_index, value, value)?;
-
-        let function = match value {
-            Value::Object(obj_ptr) => unsafe {
-                match &(*obj_ptr).obj_type {
-                    ObjectType::Function(function) => function,
-                    _ => panic!("OP_CLOSURE constant is not a function"),
-                }
-            },
-            _ => panic!("OP_CLOSURE constant is not an object"),
-        };
-
+        let function = unsafe { value.as_function() };
         let mut offset = offset + 2;
         for _ in 0..function.upvalue_count {
             let is_local = self.code[offset];

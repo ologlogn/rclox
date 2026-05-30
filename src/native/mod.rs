@@ -5,7 +5,7 @@ mod random;
 
 use crate::value::Value;
 
-pub type NativeFn = fn(&[Value]) -> Value;
+pub type NativeFn = fn(&[Value]) -> Result<Value, String>;
 
 pub struct NativeFunction {
     pub arity: usize,

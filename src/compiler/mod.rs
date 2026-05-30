@@ -2,7 +2,7 @@ use crate::chunk::{Chunk, OpCode};
 use crate::function::{FunctionObject, FunctionType};
 use crate::scanner::Scanner;
 use crate::token::{Token, TokenType};
-use crate::value::{Object, ObjectType, Value};
+use crate::value::{Object, Value};
 use crate::vm::Vm;
 
 mod frame;
@@ -43,14 +43,16 @@ impl Compiler {
         self.frame().function
     }
 
+    fn vm(&mut self) -> &mut Vm {
+        unsafe { self.vm.as_mut().unwrap() }
+    }
+
+    fn current_function_mut(&mut self) -> &mut FunctionObject {
+        unsafe { &mut *self.function() }.as_function_mut()
+    }
+
     pub fn chunk(&mut self) -> &mut Chunk {
-        let function = self.function();
-        unsafe {
-            match &mut (*function).obj_type {
-                ObjectType::Function(func) => &mut func.chunk,
-                _ => unreachable!(),
-            }
-        }
+        &mut self.current_function_mut().chunk
     }
 
     pub fn consume(&mut self, token_type: TokenType, message: &str) {
@@ -83,16 +85,8 @@ impl Compiler {
         if !self.parser.had_error {
             let upvalue_count = self.frame().upvalue_count;
             let function_ptr = self.frame().function;
+            self.current_function_mut().upvalue_count = upvalue_count;
             self.frames.pop();
-            unsafe {
-                let obj = &mut *function_ptr;
-                match &mut obj.obj_type {
-                    ObjectType::Function(function_obj) => {
-                        function_obj.upvalue_count = upvalue_count;
-                    }
-                    _ => unreachable!("function pointer should point to FunctionObject"),
-                }
-            }
             Some(function_ptr)
         } else {
             None
@@ -185,7 +179,7 @@ impl Compiler {
     pub(super) fn string(&mut self) {
         let lexeme = self.parser.scanner.get_lexeme(self.parser.previous_token);
         let string_value = lexeme[1..lexeme.len() - 1].to_string();
-        let obj_ptr = unsafe { self.vm.as_mut().unwrap().allocate_string(string_value.as_str()) };
+        let obj_ptr = self.vm().allocate_string(string_value.as_str());
         self.emit_constant(Value::Object(obj_ptr));
     }
 
@@ -471,7 +465,7 @@ impl Compiler {
 
     fn identifier_constant(&mut self) -> u8 {
         let name = self.parser.scanner.get_lexeme(self.parser.previous_token).to_string();
-        let var_name = unsafe { self.vm.as_mut().unwrap().allocate_string(&name) };
+        let var_name = self.vm().allocate_string(&name);
         self.chunk().write_constant(Value::Object(var_name))
     }
 
@@ -502,19 +496,14 @@ impl Compiler {
 
     fn function_statement(&mut self, function_type: FunctionType) {
         let name = self.parser.scanner.get_lexeme(self.parser.previous_token).to_string();
-        let func = unsafe { self.vm.as_mut().unwrap().allocate_function(FunctionObject::new(Chunk::new(), 0, &name)) };
+        let func = self.vm().allocate_function(FunctionObject::new(Chunk::new(), 0, &name));
         self.frames.push(FunctionCompiler::new(func, function_type));
         self.begin_scope();
 
         self.consume(TokenType::LeftParen, "Expect '(' after function name.");
         if !self.parser.check(TokenType::RightParen) {
             loop {
-                unsafe {
-                    match &mut (*self.function()).obj_type {
-                        ObjectType::Function(f) => f.arity += 1,
-                        _ => unreachable!(),
-                    }
-                }
+                self.current_function_mut().arity += 1;
                 let param = self.parse_variable("Expect parameter name.");
                 self.define_variable(param);
                 self.mark_initialized();
