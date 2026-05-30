@@ -43,7 +43,7 @@ impl Vm {
         self.call_stack.last_mut().unwrap()
     }
     fn current_chunk(&mut self) -> &mut Chunk {
-        &mut unsafe { &mut *(&*self.current_frame().closure).function }.chunk
+        &mut unsafe { (&mut *self.current_frame().closure).function_mut() }.chunk
     }
     pub fn interpret(&mut self, function: *mut Object) -> Result<(), InterpretResult> {
         self.stack.push(Value::Object(function));
@@ -67,7 +67,7 @@ impl Vm {
         }
     }
     fn call(&mut self, closure: &mut ClosureObject, arg_count: usize) -> Result<(), InterpretResult> {
-        let function = unsafe { &mut *closure.function };
+        let function = unsafe { closure.function_mut() };
         self.check_arity(function.arity, arg_count, function.name.clone())?;
         let frame = CallFrame {
             closure,
@@ -401,7 +401,7 @@ impl Vm {
     pub fn runtime_error(&mut self, message: &str) {
         eprintln!("{}", message);
         for frame in self.call_stack.iter().rev() {
-            let func = unsafe { &*(&*frame.closure).function };
+            let func = unsafe { (&*frame.closure).function_ref() };
             let line = func.chunk.get_line(frame.ip - 1);
             if func.name.is_empty() {
                 eprintln!("[line {}] in script", line);
