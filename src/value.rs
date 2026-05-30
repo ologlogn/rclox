@@ -1,3 +1,4 @@
+use crate::closure::ClosureObject;
 use crate::function::FunctionObject;
 use crate::native::NativeFunction;
 use std::fmt::{Display, Formatter};
@@ -35,6 +36,7 @@ impl Display for Value {
                         }
                         write!(f, "]")
                     }
+                    ObjectType::Closure(closure) => write!(f, "<fun {}>", (&*closure.function).name),
                 }
             },
         }
@@ -62,6 +64,7 @@ pub enum ObjectType {
     Function(FunctionObject),
     Native(NativeFunction),
     Array(Vec<Value>),
+    Closure(ClosureObject),
 }
 
 impl Value {

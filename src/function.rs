@@ -4,6 +4,7 @@ pub struct FunctionObject {
     pub arity: usize,
     pub chunk: Chunk,
     pub name: String,
+    pub upvalue_count: usize,
 }
 
 impl FunctionObject {
@@ -12,6 +13,7 @@ impl FunctionObject {
             arity,
             chunk,
             name: name.to_string(),
+            upvalue_count: 0,
         }
     }
 }
@@ -19,10 +21,4 @@ impl FunctionObject {
 pub enum FunctionType {
     TypeFunction,
     TypeScript,
-}
-
-pub struct CallFrame {
-    pub function: *mut FunctionObject,
-    pub ip: usize,
-    pub stack_base: usize,
 }

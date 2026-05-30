@@ -9,6 +9,7 @@ mod frame;
 mod parser;
 mod rules;
 
+use crate::closure::CompilerUpvalue;
 use crate::compiler::frame::Local;
 use crate::compiler::rules::{Precedence, get_rule};
 use frame::FunctionCompiler;
@@ -80,9 +81,19 @@ impl Compiler {
         self.emit_return();
         println!("{:?}", self.chunk());
         if !self.parser.had_error {
-            let fun = self.function();
+            let upvalue_count = self.frame().upvalue_count;
+            let function_ptr = self.frame().function;
             self.frames.pop();
-            Some(fun)
+            unsafe {
+                let obj = &mut *function_ptr;
+                match &mut obj.obj_type {
+                    ObjectType::Function(function_obj) => {
+                        function_obj.upvalue_count = upvalue_count;
+                    }
+                    _ => unreachable!("function pointer should point to FunctionObject"),
+                }
+            }
+            Some(function_ptr)
         } else {
             None
         }
@@ -356,14 +367,16 @@ impl Compiler {
     // ── Scope & locals ────────────────────────────────────────────────────────
 
     fn resolve_(&mut self) -> (OpCode, OpCode, u8) {
-        let (is_local, local_idx) = self.resolve_local();
-        let (get_op, set_op, arg) = if is_local {
-            (OpCode::OpGetLocal, OpCode::OpSetLocal, local_idx)
-        } else {
-            let global_idx = self.identifier_constant();
-            (OpCode::OpGetGlobal, OpCode::OpSetGlobal, global_idx)
-        };
-        (get_op, set_op, arg)
+        let (is_local, local_idx) = self.resolve_local(self.frames.len() - 1);
+        if is_local {
+            return (OpCode::OpGetLocal, OpCode::OpSetLocal, local_idx);
+        }
+        let (found, upvalue_idx) = self.resolve_upvalue(self.frames.len() - 1);
+        if found {
+            return (OpCode::OpGetUpvalue, OpCode::OpSetUpvalue, upvalue_idx);
+        }
+        let global_idx = self.identifier_constant();
+        (OpCode::OpGetGlobal, OpCode::OpSetGlobal, global_idx)
     }
 
     fn discard_locals(&mut self, target_depth: usize, modify_compiler_state: bool, with_value: bool) {
@@ -401,13 +414,13 @@ impl Compiler {
         self.discard_locals(depth, true, with_value);
     }
 
-    fn resolve_local(&mut self) -> (bool, u8) {
+    fn resolve_local(&mut self, frame_ix: usize) -> (bool, u8) {
         let token = self.parser.previous_token;
         let mut found_uninitialized = false;
-        let len = self.locals().len();
+        let len = self.frames[frame_ix].locals.len();
         for i in (0..len).rev() {
-            let local_token = self.locals()[i].token;
-            let local_is_initialized = self.locals()[i].is_initialized;
+            let local_token = self.frames[frame_ix].locals[i].token;
+            let local_is_initialized = self.frames[frame_ix].locals[i].is_initialized;
             if self.same_identifier(local_token, token) {
                 if !local_is_initialized {
                     found_uninitialized = true;
@@ -420,6 +433,34 @@ impl Compiler {
             self.error_at(token, "Can't read local variable in its own initializer");
         }
         (false, 0)
+    }
+
+    fn resolve_upvalue(&mut self, frame_ix: usize) -> (bool, u8) {
+        if frame_ix == 0 {
+            return (false, 0);
+        }
+        let (found, local_slot) = self.resolve_local(frame_ix - 1);
+        if found {
+            self.frames[frame_ix - 1].locals[local_slot as usize].is_captured = true;
+            return (true, self.add_upvalue(frame_ix, local_slot, true));
+        }
+        let (found, upvalue_slot) = self.resolve_upvalue(frame_ix - 1);
+        if found {
+            return (true, self.add_upvalue(frame_ix, upvalue_slot, false));
+        }
+        (false, 0)
+    }
+
+    fn add_upvalue(&mut self, frame_ix: usize, index: u8, is_local: bool) -> u8 {
+        for (i, uv) in self.frames[frame_ix].upvalues.iter().enumerate() {
+            if uv.index == index && uv.is_local == is_local {
+                return i as u8;
+            }
+        }
+        let slot = self.frames[frame_ix].upvalues.len() as u8;
+        self.frames[frame_ix].upvalues.push(CompilerUpvalue { index, is_local });
+        self.frames[frame_ix].upvalue_count += 1;
+        slot
     }
 
     fn same_identifier(&self, a: Token, b: Token) -> bool {
@@ -485,10 +526,14 @@ impl Compiler {
         self.consume(TokenType::RightParen, "Expect ')' after parameters.");
         self.consume(TokenType::LeftBrace, "Expect '{' before function body.");
         self.block();
-
+        let upvalues = self.frame().upvalues.clone();
         let compiled = self.end_compiler();
         let idx = self.chunk().write_constant(Value::Object(compiled.unwrap()));
-        self.emit_bytes(OpCode::OpConstant as u8, idx);
+        self.emit_bytes(OpCode::OpClosure as u8, idx);
+        for uv in &upvalues {
+            self.emit_byte(if uv.is_local { 1 } else { 0 });
+            self.emit_byte(uv.index);
+        }
     }
 
     // ── Control flow ──────────────────────────────────────────────────────────

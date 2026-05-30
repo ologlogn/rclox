@@ -1,4 +1,5 @@
 mod chunk;
+mod closure;
 mod compiler;
 mod function;
 mod heap;

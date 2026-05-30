@@ -1,7 +1,7 @@
-use crate::value::Value;
+use crate::function::FunctionObject;
+use crate::value::{Object, ObjectType, Value};
 use std::collections::HashMap;
 use std::fmt;
-
 // ── OpCode ───────────────────────────────────────────────────────────────────
 
 #[repr(u8)]
@@ -39,6 +39,9 @@ pub enum OpCode {
     OpGetIndex,
     OpMakeArray,
     OpLen,
+    OpClosure,
+    OpGetUpvalue,
+    OpSetUpvalue,
 }
 
 impl TryFrom<u8> for OpCode {
@@ -79,6 +82,9 @@ impl TryFrom<u8> for OpCode {
             30 => Ok(OpCode::OpGetIndex),
             31 => Ok(OpCode::OpMakeArray),
             32 => Ok(OpCode::OpLen),
+            33 => Ok(OpCode::OpClosure),
+            34 => Ok(OpCode::OpGetUpvalue),
+            35 => Ok(OpCode::OpSetUpvalue),
             _ => Err(format!("Unknown opcode: {}", byte)),
         }
     }
@@ -181,6 +187,8 @@ impl Chunk {
             OpCode::OpPopN => self.byte_instruction(f, "OP_POP_N", offset),
             OpCode::OpYield => self.byte_instruction(f, "OP_YIELD", offset),
             OpCode::OpArray => self.byte_instruction(f, "OP_ARRAY", offset),
+            OpCode::OpSetUpvalue => self.byte_instruction(f, "OP_SET_UPVALUE", offset),
+            OpCode::OpGetUpvalue => self.byte_instruction(f, "OP_GET_UPVALUE", offset),
             OpCode::OpSetIndex => self.simple_instruction(f, "OP_SET_INDEX", offset),
             OpCode::OpGetIndex => self.simple_instruction(f, "OP_GET_INDEX", offset),
             OpCode::OpMakeArray => self.simple_instruction(f, "OP_MAKE_ARRAY", offset),
@@ -188,6 +196,7 @@ impl Chunk {
             OpCode::OpJumpIfFalse => self.jump_instruction(f, "OP_JUMP_IF_FALSE", 1, offset),
             OpCode::OpJump => self.jump_instruction(f, "OP_JUMP", 1, offset),
             OpCode::OpLoop => self.jump_instruction(f, "OP_LOOP", -1, offset),
+            OpCode::OpClosure => self.closure_instruction(f, "OP_CLOSURE", offset),
         }
     }
 
@@ -203,6 +212,38 @@ impl Chunk {
         Ok(offset + 2)
     }
 
+    fn closure_instruction(&self, f: &mut fmt::Formatter<'_>, name: &str, offset: usize) -> Result<usize, fmt::Error> {
+        let constant_index = self.code[offset + 1] as usize;
+        let value = self.constants[constant_index].clone();
+
+        writeln!(f, "{:<16} {:4} {:?}: {}", name, constant_index, value, value)?;
+
+        let function = match value {
+            Value::Object(obj_ptr) => unsafe {
+                match &(*obj_ptr).obj_type {
+                    ObjectType::Function(function) => function,
+                    _ => panic!("OP_CLOSURE constant is not a function"),
+                }
+            },
+            _ => panic!("OP_CLOSURE constant is not an object"),
+        };
+
+        let mut offset = offset + 2;
+        for _ in 0..function.upvalue_count {
+            let is_local = self.code[offset];
+            let index = self.code[offset + 1];
+            writeln!(
+                f,
+                "{:04}      |                     {} {}",
+                offset,
+                if is_local != 0 { "local" } else { "upvalue" },
+                index
+            )?;
+
+            offset += 2;
+        }
+        Ok(offset)
+    }
     fn byte_instruction(&self, f: &mut fmt::Formatter<'_>, name: &str, offset: usize) -> Result<usize, fmt::Error> {
         let slot = self.code[offset + 1];
         writeln!(f, "{:<16} {:4}", name, slot)?;

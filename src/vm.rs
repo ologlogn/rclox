@@ -1,5 +1,6 @@
 use crate::chunk::{Chunk, OpCode};
-use crate::function::{CallFrame, FunctionObject};
+use crate::closure::{CallFrame, ClosureObject};
+use crate::function::FunctionObject;
 use crate::heap::Heap;
 use crate::native::{NativeFunction, get_native_functions};
 use crate::value::{Object, ObjectType, Value};
@@ -42,13 +43,24 @@ impl Vm {
         self.call_stack.last_mut().unwrap()
     }
     fn current_chunk(&mut self) -> &mut Chunk {
-        unsafe { &mut (*(self.current_frame().function)).chunk }
+        let func = unsafe { &mut *(&*self.current_frame().closure).function };
+        &mut func.chunk
     }
     pub fn interpret(&mut self, function: *mut Object) -> Result<(), InterpretResult> {
         self.stack.push(Value::Object(function));
         unsafe {
             match &mut (*function).obj_type {
-                ObjectType::Function(func) => self.call(func, 0)?,
+                ObjectType::Function(func) => {
+                    let closure = ClosureObject::new(func);
+                    let closure_obj = self.allocate_object(ObjectType::Closure(closure));
+                    self.stack.pop(); //remove func TODO: Because of GC
+                    self.stack.push(Value::Object(closure_obj));
+                    let closure_mut = match &mut (*closure_obj).obj_type {
+                        ObjectType::Closure(c) => c,
+                        _ => unreachable!(),
+                    };
+                    self.call(closure_mut, 0)?;
+                }
                 _ => unreachable!(),
             }
         }
@@ -63,10 +75,11 @@ impl Vm {
             Ok(())
         }
     }
-    fn call(&mut self, function: &mut FunctionObject, arg_count: usize) -> Result<(), InterpretResult> {
+    fn call(&mut self, closure: &mut ClosureObject, arg_count: usize) -> Result<(), InterpretResult> {
+        let function = unsafe { &mut *closure.function };
         self.check_arity(function.arity, arg_count, function.name.clone())?;
         let frame = CallFrame {
-            function,
+            closure,
             ip: 0,
             stack_base: self.stack.len() - arg_count - 1,
         };
@@ -230,10 +243,10 @@ impl Vm {
                 OpCode::OpCall => {
                     let arg_count = self.read_byte() as usize;
                     let fun_value = self.stack[self.stack.len() - arg_count - 1].clone();
-                    if let Value::Object(function) = fun_value {
+                    if let Value::Object(callable) = fun_value {
                         unsafe {
-                            match &mut (*function).obj_type {
-                                ObjectType::Function(function_obj) => self.call(function_obj, arg_count)?,
+                            match &mut (*callable).obj_type {
+                                ObjectType::Closure(closure) => self.call(closure, arg_count)?,
                                 ObjectType::Native(f) => self.call_native(f, arg_count)?,
                                 _ => {
                                     self.runtime_error("Invalid function type");
@@ -243,6 +256,23 @@ impl Vm {
                         }
                     }
                 }
+                OpCode::OpClosure => {
+                    let fun_val = self.read_constant();
+                    let Value::Object(obj_ptr) = fun_val else {
+                        self.runtime_error("Not an Object");
+                        return Err(InterpretResult::InterpretRuntimeError);
+                    };
+                    let obj = unsafe { &mut *obj_ptr };
+                    let ObjectType::Function(function) = &mut obj.obj_type else {
+                        self.runtime_error("Not a function");
+                        return Err(InterpretResult::InterpretRuntimeError);
+                    };
+                    let closure = ClosureObject::new(function);
+                    let closure_obj = self.allocate_object(ObjectType::Closure(closure));
+                    self.stack.push(Value::Object(closure_obj));
+                }
+                OpCode::OpSetUpvalue => {}
+                OpCode::OpGetUpvalue => {}
                 OpCode::OpReturn => {
                     let result = self.stack.pop().unwrap();
                     let frame = self.call_stack.pop().expect("call stack underflow");
@@ -407,7 +437,7 @@ impl Vm {
     pub fn runtime_error(&mut self, message: &str) {
         eprintln!("{}", message);
         for frame in self.call_stack.iter().rev() {
-            let func = unsafe { &*frame.function };
+            let func = unsafe { &*(&*frame.closure).function };
             let line = func.chunk.get_line(frame.ip - 1);
             if func.name.is_empty() {
                 eprintln!("[line {}] in script", line);

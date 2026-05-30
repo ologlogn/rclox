@@ -1,3 +1,4 @@
+use crate::closure::CompilerUpvalue;
 use crate::function::FunctionType;
 use crate::token::{Token, TokenType};
 use crate::value::Object;
@@ -6,6 +7,7 @@ pub struct Local {
     pub token: Token,
     pub depth: usize,
     pub is_initialized: bool,
+    pub is_captured: bool,
 }
 
 pub struct FunctionCompiler {
@@ -14,6 +16,8 @@ pub struct FunctionCompiler {
     pub jumps: Vec<(usize, usize, Vec<usize>)>,
     pub function: *mut Object,
     pub function_type: FunctionType,
+    pub upvalues: Vec<CompilerUpvalue>,
+    pub upvalue_count: usize,
 }
 
 impl FunctionCompiler {
@@ -27,6 +31,7 @@ impl FunctionCompiler {
             },
             depth: 0,
             is_initialized: true,
+            is_captured: false,
         }];
         FunctionCompiler {
             locals,
@@ -34,6 +39,8 @@ impl FunctionCompiler {
             jumps: Vec::new(),
             function,
             function_type,
+            upvalues: vec![],
+            upvalue_count: 0,
         }
     }
 
@@ -42,6 +49,7 @@ impl FunctionCompiler {
             token,
             depth: self.scope_depth,
             is_initialized: false,
+            is_captured: false,
         });
     }
 }
