@@ -1,5 +1,5 @@
 use crate::chunk::{Chunk, OpCode};
-use crate::closure::{CallFrame, ClosureObject};
+use crate::closure::{CallFrame, ClosureObject, UpValueObject};
 use crate::function::FunctionObject;
 use crate::heap::Heap;
 use crate::native::{NativeFunction, get_native_functions};
@@ -234,19 +234,49 @@ impl Vm {
                         return Err(InterpretResult::InterpretRuntimeError);
                     }
                 }
-                OpCode::OpClosure => {
+                OpCode::OpClosure => unsafe {
                     let fun_val = self.read_constant();
                     if !fun_val.is_function() {
                         self.runtime_error("Not a function");
                         return Err(InterpretResult::InterpretRuntimeError);
                     }
-                    let function = unsafe { fun_val.as_function_mut() };
-                    let closure = ClosureObject::new(function);
+
+                    let function = fun_val.as_function_mut();
+                    let mut closure = ClosureObject::new(function);
+
+                    for i in 0..closure.upvalue_count {
+                        let is_local = self.read_byte() == 1;
+                        let index = self.read_byte() as usize;
+
+                        if is_local {
+                            let slot = self.call_stack.len()  + index;
+                            let slot_ptr = &mut self.stack[slot] as *mut Value;
+                            let upvalue_obj = self.capture_upvalue(slot_ptr);
+                            closure.upvalues[i] = upvalue_obj;
+                        } else {
+                            let c = self.current_frame().closure;
+                            let parent_upvalues: &Vec<*mut Object> = &(*c).upvalues;
+                            closure.upvalues[i] = parent_upvalues[index];
+                        }
+                    }
                     let closure_obj = self.allocate_object(ObjectType::Closure(closure));
                     self.stack.push(Value::Object(closure_obj));
-                }
-                OpCode::OpSetUpvalue => {}
-                OpCode::OpGetUpvalue => {}
+                },
+                OpCode::OpGetUpvalue => unsafe {
+                    let slot = self.read_byte() as usize;
+                    let c = self.current_frame().closure;
+                    let upvalues: &Vec<*mut Object> = &(*c).upvalues;
+                    let upvalue = upvalues[slot].as_mut().unwrap().as_upvalue_mut();
+                    let value = (*upvalue.location).clone(); // dereference the pointer
+                    self.stack.push(value);
+                },
+                OpCode::OpSetUpvalue => unsafe {
+                    let slot = self.read_byte() as usize;
+                    let c = self.current_frame().closure;
+                    let upvalues: &Vec<*mut Object> = &(*c).upvalues;
+                    let val = self.peek_top();
+                    *upvalues[slot].as_mut().unwrap().as_upvalue_mut().location = val;
+                },
                 OpCode::OpReturn => {
                     let result = self.stack.pop().unwrap();
                     let frame = self.call_stack.pop().expect("call stack underflow");
@@ -429,7 +459,9 @@ impl Vm {
     pub fn allocate_object(&mut self, obj_type: ObjectType) -> *mut Object {
         self.heap.allocate(obj_type)
     }
-
+    pub fn capture_upvalue(&mut self, slot: *mut Value) -> *mut Object {
+        self.allocate_object(ObjectType::UpValue(UpValueObject::new(slot)))
+    }
     pub fn allocate_string(&mut self, string: &str) -> *mut Object {
         if let Some(&ptr) = self.interned_strings.get(string) {
             return ptr;

@@ -83,7 +83,7 @@ impl Compiler {
         self.emit_return();
         println!("{:?}", self.chunk());
         if !self.parser.had_error {
-            let upvalue_count = self.frame().upvalue_count;
+            let upvalue_count = self.frame().upvalues.len();
             let function_ptr = self.frame().function;
             self.current_function_mut().upvalue_count = upvalue_count;
             self.frames.pop();
@@ -453,7 +453,6 @@ impl Compiler {
         }
         let slot = self.frames[frame_ix].upvalues.len() as u8;
         self.frames[frame_ix].upvalues.push(CompilerUpvalue { index, is_local });
-        self.frames[frame_ix].upvalue_count += 1;
         slot
     }
 

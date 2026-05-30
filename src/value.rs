@@ -1,4 +1,4 @@
-use crate::closure::ClosureObject;
+use crate::closure::{ClosureObject, UpValueObject};
 use crate::function::FunctionObject;
 use crate::native::NativeFunction;
 use std::fmt::{Display, Formatter};
@@ -37,6 +37,7 @@ impl Display for Value {
                         write!(f, "]")
                     }
                     ObjectType::Closure(closure) => write!(f, "<fun {}>", (&*closure.function).name),
+                    ObjectType::UpValue(_) => write!(f, "<upvalue>"),
                 }
             },
         }
@@ -65,6 +66,7 @@ pub enum ObjectType {
     Native(NativeFunction),
     Array(Vec<Value>),
     Closure(ClosureObject),
+    UpValue(UpValueObject),
 }
 
 impl Value {
@@ -139,6 +141,9 @@ impl Value {
     pub unsafe fn as_closure_mut(&self) -> &mut ClosureObject {
         unsafe { (*self.as_object()).as_closure_mut() }
     }
+    pub unsafe fn as_upvalue_mut(&self) -> &mut UpValueObject {
+        unsafe { (*self.as_object()).as_upvalue_mut() }
+    }
     pub unsafe fn as_array(&self) -> &Vec<Value> {
         unsafe { (*self.as_object()).as_array() }
     }
@@ -210,6 +215,12 @@ impl Object {
         match &mut self.obj_type {
             ObjectType::Closure(c) => c,
             _ => panic!("as_closure_mut: not a closure"),
+        }
+    }
+    pub fn as_upvalue_mut(&mut self) -> &mut UpValueObject {
+        match &mut self.obj_type {
+            ObjectType::UpValue(c) => c,
+            _ => panic!("as_upvalue_mut: not a upvalue"),
         }
     }
 }

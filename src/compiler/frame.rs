@@ -17,7 +17,6 @@ pub struct FunctionCompiler {
     pub function: *mut Object,
     pub function_type: FunctionType,
     pub upvalues: Vec<CompilerUpvalue>,
-    pub upvalue_count: usize,
 }
 
 impl FunctionCompiler {
@@ -40,7 +39,6 @@ impl FunctionCompiler {
             function,
             function_type,
             upvalues: vec![],
-            upvalue_count: 0,
         }
     }
 
