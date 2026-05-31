@@ -1,0 +1,23 @@
+fun makeHandler(kind) {
+  return switch (kind) {
+    case 0 => {
+      fun f() { print "zero handler"; }
+      yield f;
+    }
+    case 1 => {
+      fun f() { print "one handler"; }
+      yield f;
+    }
+    default => {
+      fun f() { print "default handler"; }
+      yield f;
+    }
+  };
+}
+
+var h0 = makeHandler(0);
+var h1 = makeHandler(1);
+var h2 = makeHandler(99);
+h0();
+h1();
+h2();

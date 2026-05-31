@@ -1,0 +1,63 @@
+// Shared mutable state between two closures
+fun makeCounter(start) {
+  var count = start;
+  fun increment() {
+    count = count + 1;
+    print count;
+  }
+  fun decrement() {
+    count = count - 1;
+    print count;
+  }
+  return increment;
+}
+
+var c = makeCounter(0);
+c();
+c();
+c();
+
+// Closure over closure (currying)
+fun multiply(x) {
+  fun inner(y) {
+    fun innermost(z) {
+      print x * y * z;
+    }
+    return innermost;
+  }
+  return inner;
+}
+
+var times2 = multiply(2);
+var times2and3 = times2(3);
+times2and3(4);
+times2and3(5);
+times2(10)(10);
+
+// Closures in a loop — each captures same variable
+fun makeClosures() {
+  var i = 0;
+  var a = 0;
+  var b = 0;
+  var c = 0;
+  a = i;
+  i = i + 1;
+  b = i;
+  i = i + 1;
+  c = i;
+  print a;
+  print b;
+  print c;
+}
+makeClosures();
+
+// Fibonacci with closures
+fun makeFib() {
+  fun fib(n) {
+    if (n < 2) return n;
+    return fib(n - 1) + fib(n - 2);
+  }
+  return fib;
+}
+var fib = makeFib();
+print fib(10);
