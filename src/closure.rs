@@ -5,14 +5,12 @@ use std::ptr::null_mut;
 pub struct ClosureObject {
     pub function: *mut FunctionObject,
     pub upvalues: Vec<*mut Object>,
-    pub upvalue_count: usize,
 }
 impl ClosureObject {
     pub fn new(function: &mut FunctionObject) -> Self {
         let upvalue_count = function.upvalue_count;
         Self {
             function,
-            upvalue_count,
             upvalues: vec![null_mut(); upvalue_count],
         }
     }

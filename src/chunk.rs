@@ -41,6 +41,7 @@ pub enum OpCode {
     OpClosure,
     OpGetUpvalue,
     OpSetUpvalue,
+    OpCloseUpvalue,
 }
 
 impl TryFrom<u8> for OpCode {
@@ -84,6 +85,7 @@ impl TryFrom<u8> for OpCode {
             33 => Ok(OpCode::OpClosure),
             34 => Ok(OpCode::OpGetUpvalue),
             35 => Ok(OpCode::OpSetUpvalue),
+            36 => Ok(OpCode::OpCloseUpvalue),
             _ => Err(format!("Unknown opcode: {}", byte)),
         }
     }
@@ -177,6 +179,11 @@ impl Chunk {
             OpCode::OpPrint => self.simple_instruction(f, "OP_PRINT", offset),
             OpCode::OpPop => self.simple_instruction(f, "OP_POP", offset),
             OpCode::OpDup => self.simple_instruction(f, "OP_DUP", offset),
+            OpCode::OpCloseUpvalue => self.simple_instruction(f, "OP_CLOSE_UPVALUE", offset),
+            OpCode::OpSetIndex => self.simple_instruction(f, "OP_SET_INDEX", offset),
+            OpCode::OpGetIndex => self.simple_instruction(f, "OP_GET_INDEX", offset),
+            OpCode::OpMakeArray => self.simple_instruction(f, "OP_MAKE_ARRAY", offset),
+            OpCode::OpLen => self.simple_instruction(f, "OP_LEN", offset),
             OpCode::OpDefineGlobal => self.constant_instruction(f, "OP_DEFINE_GLOBAL", offset),
             OpCode::OpGetGlobal => self.constant_instruction(f, "OP_GET_GLOBAL", offset),
             OpCode::OpSetGlobal => self.constant_instruction(f, "OP_SET_GLOBAL", offset),
@@ -188,10 +195,6 @@ impl Chunk {
             OpCode::OpArray => self.byte_instruction(f, "OP_ARRAY", offset),
             OpCode::OpSetUpvalue => self.byte_instruction(f, "OP_SET_UPVALUE", offset),
             OpCode::OpGetUpvalue => self.byte_instruction(f, "OP_GET_UPVALUE", offset),
-            OpCode::OpSetIndex => self.simple_instruction(f, "OP_SET_INDEX", offset),
-            OpCode::OpGetIndex => self.simple_instruction(f, "OP_GET_INDEX", offset),
-            OpCode::OpMakeArray => self.simple_instruction(f, "OP_MAKE_ARRAY", offset),
-            OpCode::OpLen => self.simple_instruction(f, "OP_LEN", offset),
             OpCode::OpJumpIfFalse => self.jump_instruction(f, "OP_JUMP_IF_FALSE", 1, offset),
             OpCode::OpJump => self.jump_instruction(f, "OP_JUMP", 1, offset),
             OpCode::OpLoop => self.jump_instruction(f, "OP_LOOP", -1, offset),

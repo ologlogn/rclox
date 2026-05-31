@@ -3,6 +3,7 @@ fun outer() {
     fun inner() {
         print x;
     }
+    x = "meh";
     inner();
 }
 outer();

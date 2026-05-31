@@ -244,7 +244,7 @@ impl Vm {
                     let function = fun_val.as_function_mut();
                     let mut closure = ClosureObject::new(function);
 
-                    for i in 0..closure.upvalue_count {
+                    for i in 0..function.upvalue_count {
                         let is_local = self.read_byte() == 1;
                         let index = self.read_byte() as usize;
 
@@ -277,6 +277,9 @@ impl Vm {
                     let val = self.peek_top();
                     *upvalues[slot].as_mut().unwrap().as_upvalue_mut().location = val;
                 },
+                OpCode::OpCloseUpvalue => unsafe {
+
+                }
                 OpCode::OpReturn => {
                     let result = self.stack.pop().unwrap();
                     let frame = self.call_stack.pop().expect("call stack underflow");
@@ -460,6 +463,7 @@ impl Vm {
         self.heap.allocate(obj_type)
     }
     pub fn capture_upvalue(&mut self, slot: *mut Value) -> *mut Object {
+        
         self.allocate_object(ObjectType::UpValue(UpValueObject::new(slot)))
     }
     pub fn allocate_string(&mut self, string: &str) -> *mut Object {

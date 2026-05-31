@@ -390,10 +390,17 @@ impl Compiler {
             }
         }
         if pop_count > 0 {
+            let start_index = self.locals().len() - pop_count;
+            for i in (start_index..self.locals().len()).rev() {
+                if self.locals()[i].is_captured {
+                    self.emit_byte(OpCode::OpCloseUpvalue as u8);
+                } else {
+                    self.emit_byte(OpCode::OpPop as u8);
+                }
+            }
+            // Switch Yield. How to fix~? 
             if with_value {
                 self.emit_bytes(OpCode::OpYield as u8, pop_count as u8);
-            } else {
-                self.emit_bytes(OpCode::OpPopN as u8, pop_count as u8);
             }
         }
     }
