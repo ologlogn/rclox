@@ -96,7 +96,9 @@ Object
   │    ├─ String(String)
   │    ├─ Function(FunctionObject)
   │    ├─ Native(NativeFunction)
-  │    └─ Array(Vec<Value>)
+  │    ├─ Array(Vec<Value>)
+  │    ├─ Closure(ClosureObject)   // runtime wrapper around Function; holds upvalue slots
+  │    └─ UpValue(UpValueObject)   // open: location → stack slot; closed: location → self.closed
   ├─ is_marked: bool            // for future mark-and-sweep GC
   └─ next: *mut Object          // intrusive linked list through the Heap
 ```
@@ -121,16 +123,17 @@ Heap { objects: *mut Object }  // head of the intrusive linked list
 
 ```
 Vm {
-    stack:            Vec<Value>               // value stack
+    stack:            Vec<Value>               // value stack (pre-allocated 256 cap — upvalue ptrs into it must not invalidate)
     heap:             Heap
     interned_strings: HashMap<String, *mut Object>
     globals:          HashMap<String, Value>
     call_stack:       Vec<CallFrame>
+    open_upvalues:    Vec<*mut Object>         // all live UpValueObjects still pointing into the stack
 }
 
 CallFrame {
-    function:   *mut FunctionObject
-    ip:         usize                // index into function.chunk.code
+    closure:    *mut ClosureObject
+    ip:         usize                // index into closure.function.chunk.code
     stack_base: usize                // start of this frame's locals in Vm::stack
 }
 ```
@@ -138,11 +141,11 @@ CallFrame {
 `run()` is the main dispatch loop. It reads opcodes via `read_byte()` which advances `ip` on the current frame. Locals are accessed as `stack[stack_base + slot]` — no separate locals array.
 
 **Call protocol**
-1. Caller pushes the function value, then all arguments.
+1. Caller pushes the closure value, then all arguments.
 2. `OpCall arg_count` resolves the value at `stack[len - arg_count - 1]`.
-3. For `ObjectType::Function`: push a new `CallFrame` with `stack_base = stack.len() - arg_count - 1`. The function's locals live in-place on the stack starting at `stack_base`.
+3. For `ObjectType::Closure`: push a new `CallFrame` with `stack_base = stack.len() - arg_count - 1`. The function's locals live in-place on the stack starting at `stack_base`.
 4. For `ObjectType::Native`: slice args directly off the stack, call the function pointer, truncate stack, push result — no `CallFrame` needed.
-5. `OpReturn`: pop return value, pop `CallFrame`, truncate stack to `frame.stack_base`, push return value. If call stack is empty, program ends.
+5. `OpReturn`: close all upvalues pointing into this frame (`close_upvalues(stack[stack_base])`), pop `CallFrame`, truncate stack to `frame.stack_base`, push return value. If call stack is empty, program ends.
 
 **Error handling**: `runtime_error` prints the message then walks `call_stack` in reverse to print a stack trace with file/function name and line number, then clears both stack and call stack so the REPL can continue.
 
@@ -168,8 +171,11 @@ CallFrame {
 | `OpJump` | `u16` offset | ip += offset |
 | `OpJumpIfFalse` | `u16` offset | ip += offset if top is falsey |
 | `OpLoop` | `u16` offset | ip -= offset |
-| `OpCall` | `u8` arg_count | call top-of-stack function |
-| `OpReturn` | — | return top value to caller |
+| `OpCall` | `u8` arg_count | call top-of-stack closure or native |
+| `OpReturn` | — | close upvalues in frame, return top value to caller |
+| `OpClosure` | `u8` idx, then `(u8 is_local, u8 slot)*` | wrap function constant in a closure, capture upvalues |
+| `OpGetUpvalue` / `OpSetUpvalue` | `u8` slot | read/write upvalue slot in current closure |
+| `OpCloseUpvalue` | — | copy top-of-stack into its upvalue's `closed` field, pop |
 | `OpArray` | `u8` n | pop n values, heap-allocate array, push |
 | `OpMakeArray` | — | pop length n, heap-allocate nil array of size n, push |
 | `OpGetIndex` | — | pop index + array, push element |
@@ -190,11 +196,12 @@ CallFrame {
 
 **Native function extension point** — `NativeFunction { arity, name, is_variadic, fun: fn(&[Value]) -> Value }`. New natives register via `get_native_functions()`. Currently: `clock()` (Unix time as f64), `floor(n)`, `mod(a, b)`.
 
+**Closures / upvalues** — every function is wrapped in a `ClosureObject` at runtime. Captured variables become `UpValueObject`s — open upvalues hold a pointer into the stack; on scope exit or return they are closed (value copied into the object itself). Deduplication ensures two closures capturing the same local share one upvalue. Supports arbitrarily deep capture chains (inner → middle → outer).
+
 ---
 
 ## TODO (book chapters remaining)
 
-- [ ] **Upvalues / closures** — `ObjUpvalue`, `OpGetUpvalue`/`OpSetUpvalue`/`OpCloseUpvalue`; compiler tracks captured locals (ch. 25)
 - [ ] **Garbage collection** — tri-color mark-and-sweep; `is_marked` on `Object` already present; need GC roots (stack + globals + open upvalues) and a `gray_stack` worklist (ch. 26)
 - [ ] **Classes and instances** — `ObjClass`, `ObjInstance`, `OpGetProperty`/`OpSetProperty` with field hash map (ch. 27)
 - [ ] **Methods and `this`** — `ObjBoundMethod`, `OpInvoke` fast path, implicit `this` as slot 0 (ch. 28)
@@ -214,16 +221,21 @@ print fib(30);
 print clock() - start;
 ```
 
-**Closures / higher-order functions** *(once closures are implemented)*
+**Closures / higher-order functions**
 ```lox
-fun makeCounter() {
-  var count = 0;
+fun makeCounter(start) {
+  var count = start;
   fun increment() {
     count = count + 1;
-    return count;
+    print count;
   }
   return increment;
 }
+
+var c = makeCounter(0);
+c();  // 1
+c();  // 2
+c();  // 3
 ```
 
 **Switch expression**
