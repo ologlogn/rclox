@@ -47,16 +47,16 @@ Each `fun` pushes a new `FunctionCompiler` onto `Compiler::frames`. It owns:
 - `jumps: Vec<(loop_depth, continue_target, Vec<break_patch>)>` — tracks pending `break`/`continue` patches per loop nesting level.
 - `function: *mut Object` — the heap-allocated `FunctionObject` being filled.
 
-`end_compiler()` pops the frame and returns the completed function pointer as a `Value::Object` constant, which the enclosing chunk loads with `OpConstant`. Functions are values.
+`end_compiler()` pops the frame and returns the completed `FunctionObject` pointer. The enclosing chunk stores it as a constant and emits `OpClosure` to wrap it at runtime. Functions are always closures at runtime.
 
 **Local variable resolution**
 
-`resolve_local` scans `locals` in reverse to find the innermost binding. Uninitialised locals (declared but not yet past their initialiser) are skipped with an error, preventing `var x = x;`. If not found locally, falls back to a global by name (emits `OpGetGlobal`/`OpSetGlobal` with the name as a constant-pool string).
+`resolve_local` scans `locals` in reverse to find the innermost binding. Uninitialised locals are skipped with an error, preventing `var x = x;`. If not found locally, `resolve_upvalue` walks the enclosing compiler frames recursively — capturing the variable as an upvalue (emits `OpGetUpvalue`/`OpSetUpvalue`). If not found anywhere, falls back to a global by name (emits `OpGetGlobal`/`OpSetGlobal`).
 
 **Scope exit**
 
 `end_scope` / `discard_locals` counts how many locals are deeper than the target depth and emits either:
-- `OpPopN n` — discard n values (normal scope exit)
+- One `OpPop` or `OpCloseUpvalue` per local (normal scope exit) — `OpCloseUpvalue` for captured locals, `OpPop` for plain ones
 - `OpYield n` — preserve the top value, pop the n locals beneath it (used by `switch` case blocks to return a value out of a scope)
 
 **Jump patching**
@@ -147,6 +147,8 @@ CallFrame {
 4. For `ObjectType::Native`: slice args directly off the stack, call the function pointer, truncate stack, push result — no `CallFrame` needed.
 5. `OpReturn`: close all upvalues pointing into this frame (`close_upvalues(stack[stack_base])`), pop `CallFrame`, truncate stack to `frame.stack_base`, push return value. If call stack is empty, program ends.
 
+**Closures and upvalues** — every function is wrapped in a `ClosureObject` at runtime. Captured variables become `UpValueObject`s. Open upvalues hold a raw pointer into the stack; on scope exit (`OpCloseUpvalue`) or frame return, they are closed — the value is copied into `UpValueObject::closed` and `location` is redirected to point there. Deduplication in `capture_upvalue` ensures two closures capturing the same local share one upvalue object. Supports arbitrarily deep capture chains (inner → middle → outer). `Vm::open_upvalues` tracks all live open upvalues for GC root marking.
+
 **Error handling**: `runtime_error` prints the message then walks `call_stack` in reverse to print a stack trace with file/function name and line number, then clears both stack and call stack so the REPL can continue.
 
 ---
@@ -194,9 +196,7 @@ CallFrame {
 
 **Arrays** — `[1, "hello", true]` literal syntax and `array(n)` for nil-filled pre-allocation. Index get `arr[i]` and set `arr[i] = x` are proper l-values. `len(arr)` returns element count. Heterogeneous — elements are `Value`, any type mix is valid. Bounds and type checked at runtime. Arrays are heap objects, freed at VM teardown with everything else.
 
-**Native function extension point** — `NativeFunction { arity, name, is_variadic, fun: fn(&[Value]) -> Value }`. New natives register via `get_native_functions()`. Currently: `clock()` (Unix time as f64), `floor(n)`, `mod(a, b)`.
-
-**Closures / upvalues** — every function is wrapped in a `ClosureObject` at runtime. Captured variables become `UpValueObject`s — open upvalues hold a pointer into the stack; on scope exit or return they are closed (value copied into the object itself). Deduplication ensures two closures capturing the same local share one upvalue. Supports arbitrarily deep capture chains (inner → middle → outer).
+**Native function extension point** — `NativeFunction { arity, name, is_variadic, fun: fn(&[Value]) -> Result<Value, String> }`. New natives register via `get_native_functions()`. Runtime type errors return `Err(msg)` which the VM surfaces as a runtime error. Currently: `clock()` (Unix time as f64), `floor(n)`, `mod(a, b)`, `random(min, max)`.
 
 ---
 
