@@ -374,14 +374,24 @@ impl Compiler {
     }
 
     fn discard_locals(&mut self, target_depth: usize, modify_compiler_state: bool, with_value: bool) {
+        let locals_len = self.locals().len();
         let mut pop_count = 0;
-        {
-            let locals = &self.locals();
-            for local in locals.iter().rev() {
-                if local.depth <= target_depth {
-                    break;
+        for local in self.locals().iter().rev() {
+            if local.depth <= target_depth { break; }
+            pop_count += 1;
+        }
+        if pop_count > 0 {
+            let start_index = locals_len - pop_count;
+            if with_value {
+                self.emit_bytes(OpCode::OpYield as u8, pop_count as u8);
+            } else {
+                for i in (start_index..locals_len).rev() {
+                    if self.locals()[i].is_captured {
+                        self.emit_byte(OpCode::OpCloseUpvalue as u8);
+                    } else {
+                        self.emit_byte(OpCode::OpPop as u8);
+                    }
                 }
-                pop_count += 1;
             }
         }
         if modify_compiler_state {
@@ -389,22 +399,8 @@ impl Compiler {
                 self.locals().pop();
             }
         }
-        if pop_count > 0 {
-            let start_index = self.locals().len() - pop_count;
-            for i in (start_index..self.locals().len()).rev() {
-                if self.locals()[i].is_captured {
-                    self.emit_byte(OpCode::OpCloseUpvalue as u8);
-                } else {
-                    self.emit_byte(OpCode::OpPop as u8);
-                }
-            }
-            // Switch Yield. How to fix~? 
-            if with_value {
-                self.emit_bytes(OpCode::OpYield as u8, pop_count as u8);
-            }
-        }
     }
-
+    
     fn begin_scope(&mut self) {
         self.frame().scope_depth += 1;
     }

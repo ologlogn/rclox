@@ -19,6 +19,7 @@ pub struct Vm {
     interned_strings: HashMap<String, *mut Object>,
     globals: HashMap<String, Value>,
     call_stack: Vec<CallFrame>,
+    open_upvalues: Vec<*mut Object>,
 }
 
 impl Vm {
@@ -31,6 +32,7 @@ impl Vm {
             interned_strings: HashMap::new(),
             globals: HashMap::new(),
             call_stack: Vec::new(),
+            open_upvalues: Vec::new(),
         };
         let native_functions = get_native_functions();
         for f in native_functions {
@@ -240,27 +242,26 @@ impl Vm {
                         self.runtime_error("Not a function");
                         return Err(InterpretResult::InterpretRuntimeError);
                     }
-
                     let function = fun_val.as_function_mut();
-                    let mut closure = ClosureObject::new(function);
+                    let closure = ClosureObject::new(function);
+                    let closure_obj = self.allocate_object(ObjectType::Closure(closure));
+                    self.stack.push(Value::Object(closure_obj));
 
-                    for i in 0..function.upvalue_count {
+                    let upvalue_count = (*fun_val.as_function()).upvalue_count;
+                    for i in 0..upvalue_count {
                         let is_local = self.read_byte() == 1;
                         let index = self.read_byte() as usize;
-
                         if is_local {
-                            let slot = self.current_frame().stack_base  + index;
-                            let slot_ptr = &mut self.stack[slot] as *mut Value;
+                            let base = self.current_frame().stack_base;
+                            let slot_ptr = &mut self.stack[base + index] as *mut Value;
                             let upvalue_obj = self.capture_upvalue(slot_ptr);
-                            closure.upvalues[i] = upvalue_obj;
+                            (*closure_obj).as_closure_mut().upvalues[i] = upvalue_obj;
                         } else {
                             let c = self.current_frame().closure;
                             let parent_upvalues: &Vec<*mut Object> = &(*c).upvalues;
-                            closure.upvalues[i] = parent_upvalues[index];
+                            (*closure_obj).as_closure_mut().upvalues[i] = parent_upvalues[index];
                         }
                     }
-                    let closure_obj = self.allocate_object(ObjectType::Closure(closure));
-                    self.stack.push(Value::Object(closure_obj));
                 },
                 OpCode::OpGetUpvalue => unsafe {
                     let slot = self.read_byte() as usize;
@@ -277,15 +278,20 @@ impl Vm {
                     let val = self.peek_top();
                     *upvalues[slot].as_mut().unwrap().as_upvalue_mut().location = val;
                 },
-                OpCode::OpCloseUpvalue => unsafe {
-
-                }
+                OpCode::OpCloseUpvalue => {
+                    let len = self.stack.len();
+                    let top_ptr = &mut self.stack[len - 1] as *mut Value;
+                    self.close_upvalues(top_ptr);
+                    self.stack.pop();
+                },
                 OpCode::OpReturn => {
                     let result = self.stack.pop().unwrap();
                     let frame = self.call_stack.pop().expect("call stack underflow");
                     if self.call_stack.is_empty() {
                         return Ok(()); // end program
                     }
+                    let base_ptr = &mut self.stack[frame.stack_base] as *mut Value;
+                    self.close_upvalues(base_ptr);
                     self.stack.truncate(frame.stack_base);
                     self.stack.push(result);
                 }
@@ -463,8 +469,27 @@ impl Vm {
         self.heap.allocate(obj_type)
     }
     pub fn capture_upvalue(&mut self, slot: *mut Value) -> *mut Object {
-        
-        self.allocate_object(ObjectType::UpValue(UpValueObject::new(slot)))
+        for &uv_obj in &self.open_upvalues {
+            let uv = unsafe { &(*uv_obj).as_upvalue_mut() };
+            if uv.location == slot {
+                return uv_obj;
+            }
+        }
+        let obj = self.allocate_object(ObjectType::UpValue(UpValueObject::new(slot)));
+        self.open_upvalues.push(obj);
+        obj
+    }
+    fn close_upvalues(&mut self, last: *mut Value) {
+        self.open_upvalues.retain(|&uv_obj| unsafe {
+            let uv = (*uv_obj).as_upvalue_mut();
+            if uv.location >= last {
+                uv.closed = (*uv.location).clone();
+                uv.location = &mut uv.closed;
+                false
+            } else {
+                true
+            }
+        });
     }
     pub fn allocate_string(&mut self, string: &str) -> *mut Object {
         if let Some(&ptr) = self.interned_strings.get(string) {
